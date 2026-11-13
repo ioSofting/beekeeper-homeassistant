@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Address of the agent bee-ha running next to Home Assistant (container). The add-on Beekeeper is found by itself.",
+                "data": {
+                    "url": "Address of the agent"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Connect Home Assistant with the add-on Beekeeper? It then shows the connection to the portal and running remote access sessions here."
+            }
+        },
+        "error": {
+            "cannot_connect": "The agent does not answer at this address."
+        },
+        "abort": {
+            "already_configured": "This agent is already set up.",
+            "cannot_connect": "The agent does not answer."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Connection to the portal"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Remote access sessions"
+            },
+            "state": {
+                "name": "State",
+                "state": {
+                    "connected": "Connected",
+                    "disconnected": "Disconnected",
+                    "not_enrolled": "Not enrolled",
+                    "problem": "Problem"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "End remote access"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "No remote access is running."
+        },
+        "agent_unreachable": {
+            "message": "The agent bee-ha does not answer."
+        }
+    }
+}

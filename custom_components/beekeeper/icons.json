@@ -1,0 +1,17 @@
+{
+    "entity": {
+        "sensor": {
+            "sessions": {
+                "default": "mdi:remote-desktop"
+            },
+            "state": {
+                "default": "mdi:bee"
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "default": "mdi:close-network-outline"
+            }
+        }
+    }
+}

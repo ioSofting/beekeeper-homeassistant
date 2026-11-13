@@ -1,0 +1,30 @@
+name: Beekeeper
+version: "0.2.0"
+slug: bee_ha
+description: Fernzugriff auf Home Assistant über beekeeper, ohne offene Ports und zeitlich begrenzt
+url: https://github.com/ioSofting/beekeeper-homeassistant
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+startup: services
+boot: auto
+# version and name of Home Assistant (core/api/config), Home Assistant OS or not (/info), discovery of the integration
+homeassistant_api: true
+hassio_api: true
+discovery:
+  - beekeeper
+options:
+  token: ""
+  server: https://beekeeper.one
+  comment: ""
+  remote_access: true
+  debug: false
+schema:
+  token: password?
+  server: url
+  comment: str?
+  remote_access: bool
+  ha_url: url?
+  debug: bool

@@ -1,0 +1,19 @@
+configuration:
+  token:
+    name: Enrollment-Token
+    description: "Aus dem Portal (Anlage, Gerät, Enrollment-Token). Wird nur bis zur ersten Anmeldung gebraucht."
+  server:
+    name: Server
+    description: "Adresse des Portals."
+  comment:
+    name: Kommentar
+    description: "Freitext im Portal, z. B. Kunde und Ort."
+  remote_access:
+    name: Fernzugriff erlauben
+    description: "Aus: das Portal kann keinen Fernzugriff auf dieses Home Assistant öffnen."
+  ha_url:
+    name: Adresse von Home Assistant
+    description: "Nur ändern, wenn Home Assistant nicht unter http://homeassistant:8123 antwortet (z. B. https mit eigenem Zertifikat)."
+  debug:
+    name: Debug
+    description: "Mehr Meldungen im Log des Add-ons."

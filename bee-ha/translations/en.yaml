@@ -1,0 +1,19 @@
+configuration:
+  token:
+    name: Enrollment token
+    description: "From the portal (asset, device, enrollment token). Only needed until the first enrollment."
+  server:
+    name: Server
+    description: "Address of the portal."
+  comment:
+    name: Comment
+    description: "Free text shown in the portal, e.g. customer and place."
+  remote_access:
+    name: Allow remote access
+    description: "Off: the portal cannot open a remote access to this Home Assistant."
+  ha_url:
+    name: Address of Home Assistant
+    description: "Change only if Home Assistant does not answer on http://homeassistant:8123 (e.g. https with an own certificate)."
+  debug:
+    name: Debug
+    description: "More messages in the log of the add-on."

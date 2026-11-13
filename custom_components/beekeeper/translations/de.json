@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Adresse des Agenten bee-ha, der neben Home Assistant läuft (Container). Das Add-on Beekeeper wird von selbst gefunden.",
+                "data": {
+                    "url": "Adresse des Agenten"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Home Assistant mit dem Add-on Beekeeper verbinden? Dann zeigt es hier die Verbindung zum Portal und laufende Fernzugriffe."
+            }
+        },
+        "error": {
+            "cannot_connect": "Der Agent antwortet unter dieser Adresse nicht."
+        },
+        "abort": {
+            "already_configured": "Dieser Agent ist schon eingerichtet.",
+            "cannot_connect": "Der Agent antwortet nicht."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Verbindung zum Portal"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Fernzugriffe"
+            },
+            "state": {
+                "name": "Zustand",
+                "state": {
+                    "connected": "Verbunden",
+                    "disconnected": "Getrennt",
+                    "not_enrolled": "Nicht angemeldet",
+                    "problem": "Problem"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "Fernzugriff beenden"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "Es läuft kein Fernzugriff."
+        },
+        "agent_unreachable": {
+            "message": "Der Agent bee-ha antwortet nicht."
+        }
+    }
+}
