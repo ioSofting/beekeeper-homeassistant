@@ -60,3 +60,7 @@ Ohne Integration funktioniert der Agent auch; dann fehlen nur die Anzeige in Hom
 - Der Agent ändert nichts an Home Assistant und braucht dort kein Konto. Beim Fernzugriff meldet man sich im Browser mit einem Konto von Home Assistant an.
 - Fehlanmeldungen über den Fernzugriff zählen in Home Assistant für die Adresse des Agenten. Ist die Sperre nach Fehlanmeldungen eingeschaltet (`login_attempts_threshold`), sperren zu viele davon den Fernzugriff, bis sie in `ip_bans.yaml` aufgehoben ist.
 - `bee-ha/bee-ha.cjs` ist der gebündelte Agent; er wird im Repository des Servers gebaut (`npm run build:ha-addon`).
+
+## Lizenz
+
+Proprietär, siehe [LICENSE](LICENSE): Nutzung kostenlos erlaubt, Änderung und Weitergabe nur mit schriftlicher Erlaubnis der ioSofting GmbH.

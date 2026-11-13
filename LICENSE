@@ -1,0 +1,26 @@
+Copyright (c) 2026 ioSofting GmbH, Talstr. 27, 67317 Altleiningen, Germany.
+All rights reserved.
+
+This software (the add-on bee-ha, the integration Beekeeper and all other files of this repository) is
+proprietary. It is not open source.
+
+Permitted use
+You may download, install and use this software free of charge, unmodified, to connect your own Home Assistant
+installations, or those of your customers, with the service beekeeper. This includes installing it through the
+add-on store of Home Assistant or through HACS from this repository, and building the container image from this
+repository for your own installations.
+
+Not permitted without the prior written permission of ioSofting GmbH
+- modifying, adapting or translating the software, or creating works based on it;
+- copying, distributing, publishing, sublicensing, selling, renting or otherwise making the software available to
+  others, in source or in any other form, other than by referring to this repository;
+- removing or changing this license or the copyright notices.
+
+Rights that mandatory law grants to users (for example to decompile for interoperability) remain unaffected.
+
+No warranty
+The software is provided "as is", without warranty of any kind, to the extent permitted by law. ioSofting GmbH is
+liable only for intent and gross negligence, and for injury to life, body or health, and as far as mandatory law
+requires otherwise.
+
+Any other use requires a contract with ioSofting GmbH.
