@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Адрес агента bee-ha, работающего рядом с Home Assistant (контейнер). Дополнение Beekeeper находится автоматически.",
+                "data": {
+                    "url": "Адрес агента"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Подключить Home Assistant к дополнению Beekeeper? Здесь будут показаны соединение с порталом и текущие удалённые доступы."
+            }
+        },
+        "error": {
+            "cannot_connect": "Агент не отвечает по этому адресу."
+        },
+        "abort": {
+            "already_configured": "Этот агент уже настроен.",
+            "cannot_connect": "Агент не отвечает."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Соединение с порталом"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Удалённые доступы"
+            },
+            "state": {
+                "name": "Состояние",
+                "state": {
+                    "connected": "Подключено",
+                    "disconnected": "Отключено",
+                    "not_enrolled": "Не зарегистрирован",
+                    "problem": "Проблема"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "Завершить удалённый доступ"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "Удалённый доступ не активен."
+        },
+        "agent_unreachable": {
+            "message": "Агент bee-ha не отвечает."
+        }
+    }
+}

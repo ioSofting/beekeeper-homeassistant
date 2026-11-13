@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Adres agenta bee-ha działającego obok Home Assistant (kontener). Dodatek Beekeeper jest wykrywany automatycznie.",
+                "data": {
+                    "url": "Adres agenta"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Połączyć Home Assistant z dodatkiem Beekeeper? Pokazane tu będą połączenie z portalem i trwające dostępy zdalne."
+            }
+        },
+        "error": {
+            "cannot_connect": "Agent nie odpowiada pod tym adresem."
+        },
+        "abort": {
+            "already_configured": "Ten agent jest już skonfigurowany.",
+            "cannot_connect": "Agent nie odpowiada."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Połączenie z portalem"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Dostępy zdalne"
+            },
+            "state": {
+                "name": "Stan",
+                "state": {
+                    "connected": "Połączono",
+                    "disconnected": "Rozłączono",
+                    "not_enrolled": "Niezarejestrowany",
+                    "problem": "Problem"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "Zakończ dostęp zdalny"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "Żaden dostęp zdalny nie jest aktywny."
+        },
+        "agent_unreachable": {
+            "message": "Agent bee-ha nie odpowiada."
+        }
+    }
+}

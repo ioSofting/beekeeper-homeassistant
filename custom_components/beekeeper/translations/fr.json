@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Adresse de l'agent bee-ha qui tourne à côté de Home Assistant (conteneur). Le module complémentaire Beekeeper est détecté automatiquement.",
+                "data": {
+                    "url": "Adresse de l'agent"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Connecter Home Assistant au module complémentaire Beekeeper ? La connexion au portail et les accès à distance en cours seront affichés ici."
+            }
+        },
+        "error": {
+            "cannot_connect": "L'agent ne répond pas à cette adresse."
+        },
+        "abort": {
+            "already_configured": "Cet agent est déjà configuré.",
+            "cannot_connect": "L'agent ne répond pas."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Connexion au portail"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Accès à distance"
+            },
+            "state": {
+                "name": "État",
+                "state": {
+                    "connected": "Connecté",
+                    "disconnected": "Déconnecté",
+                    "not_enrolled": "Non enregistré",
+                    "problem": "Problème"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "Terminer l'accès à distance"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "Aucun accès à distance n'est en cours."
+        },
+        "agent_unreachable": {
+            "message": "L'agent bee-ha ne répond pas."
+        }
+    }
+}

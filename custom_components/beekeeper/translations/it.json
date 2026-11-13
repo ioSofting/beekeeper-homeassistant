@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Indirizzo dell'agente bee-ha in esecuzione accanto a Home Assistant (container). Il componente aggiuntivo Beekeeper viene rilevato automaticamente.",
+                "data": {
+                    "url": "Indirizzo dell'agente"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Collegare Home Assistant al componente aggiuntivo Beekeeper? Qui verranno mostrati la connessione al portale e gli accessi remoti in corso."
+            }
+        },
+        "error": {
+            "cannot_connect": "L'agente non risponde a questo indirizzo."
+        },
+        "abort": {
+            "already_configured": "Questo agente è già configurato.",
+            "cannot_connect": "L'agente non risponde."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Connessione al portale"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Accessi remoti"
+            },
+            "state": {
+                "name": "Stato",
+                "state": {
+                    "connected": "Connesso",
+                    "disconnected": "Disconnesso",
+                    "not_enrolled": "Non registrato",
+                    "problem": "Problema"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "Termina l'accesso remoto"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "Nessun accesso remoto in corso."
+        },
+        "agent_unreachable": {
+            "message": "L'agente bee-ha non risponde."
+        }
+    }
+}

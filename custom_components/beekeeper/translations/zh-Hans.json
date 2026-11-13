@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "在 Home Assistant 旁边运行的代理 bee-ha 的地址（容器）。Beekeeper 加载项会被自动发现。",
+                "data": {
+                    "url": "代理地址"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "将 Home Assistant 与 Beekeeper 加载项连接？之后这里会显示与门户的连接以及正在进行的远程访问。"
+            }
+        },
+        "error": {
+            "cannot_connect": "代理在此地址无响应。"
+        },
+        "abort": {
+            "already_configured": "此代理已设置。",
+            "cannot_connect": "代理无响应。"
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "与门户的连接"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "远程访问"
+            },
+            "state": {
+                "name": "状态",
+                "state": {
+                    "connected": "已连接",
+                    "disconnected": "已断开",
+                    "not_enrolled": "未注册",
+                    "problem": "问题"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "结束远程访问"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "当前没有远程访问。"
+        },
+        "agent_unreachable": {
+            "message": "代理 bee-ha 无响应。"
+        }
+    }
+}

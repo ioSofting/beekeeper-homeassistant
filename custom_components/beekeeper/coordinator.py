@@ -26,6 +26,31 @@ def _local_time(ms: int | float | None) -> datetime | None:
     return dt_util.as_local(dt_util.utc_from_timestamp(ms / 1000))
 
 
+# notification while somebody works on this Home Assistant: {by}, {purpose}, {until}
+NOTIFICATION = {
+    "en": ("Remote access through Beekeeper", "**{by}** works on this Home Assistant through remote access.\n\nPurpose: {purpose}\n\nUntil: {until}\n\nEnd it now: device *Beekeeper*, button *End remote access*."),
+    "de": ("Fernzugriff über Beekeeper", "**{by}** arbeitet per Fernzugriff an diesem Home Assistant.\n\nZweck: {purpose}\n\nBis: {until}\n\nVorzeitig beenden: Gerät *Beekeeper*, Taste *Fernzugriff beenden*."),
+    "ru": ("Удалённый доступ через Beekeeper", "**{by}** работает с этим Home Assistant через удалённый доступ.\n\nЦель: {purpose}\n\nДо: {until}\n\nЗавершить сейчас: устройство *Beekeeper*, кнопка *Завершить удалённый доступ*."),
+    "uk": ("Віддалений доступ через Beekeeper", "**{by}** працює з цим Home Assistant через віддалений доступ.\n\nМета: {purpose}\n\nДо: {until}\n\nЗавершити зараз: пристрій *Beekeeper*, кнопка *Завершити віддалений доступ*."),
+    "es": ("Acceso remoto a través de Beekeeper", "**{by}** trabaja en este Home Assistant mediante acceso remoto.\n\nMotivo: {purpose}\n\nHasta: {until}\n\nFinalizar ahora: dispositivo *Beekeeper*, botón *Finalizar acceso remoto*."),
+    "fr": ("Accès à distance via Beekeeper", "**{by}** travaille sur ce Home Assistant par accès à distance.\n\nObjet : {purpose}\n\nJusqu'à : {until}\n\nTerminer maintenant : appareil *Beekeeper*, bouton *Terminer l'accès à distance*."),
+    "it": ("Accesso remoto tramite Beekeeper", "**{by}** lavora su questo Home Assistant tramite accesso remoto.\n\nScopo: {purpose}\n\nFino a: {until}\n\nTerminare ora: dispositivo *Beekeeper*, pulsante *Termina l'accesso remoto*."),
+    "nl": ("Externe toegang via Beekeeper", "**{by}** werkt via externe toegang aan deze Home Assistant.\n\nDoel: {purpose}\n\nTot: {until}\n\nNu beëindigen: apparaat *Beekeeper*, knop *Externe toegang beëindigen*."),
+    "pl": ("Dostęp zdalny przez Beekeeper", "**{by}** pracuje na tym Home Assistant przez dostęp zdalny.\n\nCel: {purpose}\n\nDo: {until}\n\nZakończ teraz: urządzenie *Beekeeper*, przycisk *Zakończ dostęp zdalny*."),
+    "pt": ("Acesso remoto através do Beekeeper", "**{by}** está a trabalhar neste Home Assistant por acesso remoto.\n\nMotivo: {purpose}\n\nAté: {until}\n\nTerminar agora: dispositivo *Beekeeper*, botão *Terminar acesso remoto*."),
+    "zh-Hans": ("通过 Beekeeper 的远程访问", "**{by}** 正在通过远程访问操作此 Home Assistant。\n\n目的：{purpose}\n\n截止：{until}\n\n立即结束：设备 *Beekeeper*，按钮 *结束远程访问*。"),
+}
+
+
+def notification_texts(language: str | None) -> dict[str, str]:
+    """Title and message in the language of Home Assistant (de, de-CH, pt-BR, zh-Hans ...), else English."""
+    lang = language or "en"
+    if lang.startswith("zh"):
+        lang = "zh-Hans"
+    title, message = NOTIFICATION.get(lang) or NOTIFICATION.get(lang.split("-")[0]) or NOTIFICATION["en"]
+    return {"title": title, "message": message}
+
+
 def notification_id(session_id: str) -> str:
     return f"{DOMAIN}_{session_id}"
 
@@ -76,26 +101,14 @@ class BeekeeperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _sessions_changed(self, sessions: list[dict[str, Any]]) -> None:
         """A notification while somebody works on this Home Assistant, and an event at start and end."""
         current = {s["id"]: s for s in sessions if isinstance(s, dict) and s.get("id")}
-        german = (self.hass.config.language or "").startswith("de")
+        texts = notification_texts(self.hass.config.language)
         for sid, s in current.items():
             if sid in self._known:
                 continue
             until = _local_time(s.get("expiresAt"))
             until_text = until.strftime("%d.%m.%Y %H:%M") if until else "?"
-            if german:
-                title = "Fernzugriff über Beekeeper"
-                message = (
-                    f"**{s.get('by', '?')}** arbeitet per Fernzugriff an diesem Home Assistant.\n\n"
-                    f"Zweck: {s.get('purpose', '')}\n\nBis: {until_text}\n\n"
-                    "Vorzeitig beenden: Gerät *Beekeeper*, Taste *Fernzugriff beenden*."
-                )
-            else:
-                title = "Remote access through Beekeeper"
-                message = (
-                    f"**{s.get('by', '?')}** works on this Home Assistant through remote access.\n\n"
-                    f"Purpose: {s.get('purpose', '')}\n\nUntil: {until_text}\n\n"
-                    "End it now: device *Beekeeper*, button *End remote access*."
-                )
+            title = texts["title"]
+            message = texts["message"].format(by=s.get("by", "?"), purpose=s.get("purpose", ""), until=until_text)
             persistent_notification.async_create(self.hass, message, title=title, notification_id=notification_id(sid))
             self.hass.bus.async_fire(
                 EVENT_REMOTE_ACCESS,

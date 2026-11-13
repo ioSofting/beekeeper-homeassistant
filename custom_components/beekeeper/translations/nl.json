@@ -1,0 +1,58 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Beekeeper",
+                "description": "Adres van de agent bee-ha die naast Home Assistant draait (container). De add-on Beekeeper wordt automatisch gevonden.",
+                "data": {
+                    "url": "Adres van de agent"
+                }
+            },
+            "hassio_confirm": {
+                "title": "Beekeeper",
+                "description": "Home Assistant verbinden met de add-on Beekeeper? Hier worden dan de verbinding met het portaal en lopende externe toegangen getoond."
+            }
+        },
+        "error": {
+            "cannot_connect": "De agent reageert niet op dit adres."
+        },
+        "abort": {
+            "already_configured": "Deze agent is al ingesteld.",
+            "cannot_connect": "De agent reageert niet."
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "connected": {
+                "name": "Verbinding met het portaal"
+            }
+        },
+        "sensor": {
+            "sessions": {
+                "name": "Externe toegangen"
+            },
+            "state": {
+                "name": "Status",
+                "state": {
+                    "connected": "Verbonden",
+                    "disconnected": "Niet verbonden",
+                    "not_enrolled": "Niet aangemeld",
+                    "problem": "Probleem"
+                }
+            }
+        },
+        "button": {
+            "end_sessions": {
+                "name": "Externe toegang beëindigen"
+            }
+        }
+    },
+    "exceptions": {
+        "no_sessions": {
+            "message": "Er loopt geen externe toegang."
+        },
+        "agent_unreachable": {
+            "message": "De agent bee-ha reageert niet."
+        }
+    }
+}
