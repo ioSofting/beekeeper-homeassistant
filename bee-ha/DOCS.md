@@ -5,7 +5,7 @@ Bindet dieses Home Assistant als Anlage in die Flottenverwaltung [beekeeper](htt
 - Heartbeat und Inventar: Version von Home Assistant, Home Assistant OS oder Supervised, Name des Zuhauses
 - Fernzugriff auf die Oberfläche von Home Assistant über einen Tunnel, ohne offene Ports und ohne Portfreigabe im Router; zeitlich begrenzt, mit Person und Zweck im Audit-Log des Portals
 
-Das Add-on ändert nichts an Home Assistant und braucht dort kein Konto. Angemeldet wird im Browser mit einem Konto von Home Assistant.
+Das Add-on ändert nichts an Home Assistant und braucht dort kein Konto. Beim Fernzugriff meldet man sich mit einem Konto von Home Assistant an: automatisch, wenn im Portal an der Anlage eine Anmeldung an Home Assistant hinterlegt ist, sonst im Browser. Am besten dafür ein eigenes Konto anlegen, z. B. „Support“.
 
 ## Einrichten
 
