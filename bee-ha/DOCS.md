@@ -26,6 +26,10 @@ Nach der Anmeldung liegt das Gerätezertifikat in den Daten des Add-ons. Das Tok
 | Adresse von Home Assistant | nur wenn Home Assistant nicht unter `http://homeassistant:8123` antwortet, etwa `https://homeassistant:8123` mit eigenem Zertifikat (wird nicht geprüft) |
 | Debug | mehr Meldungen im Log |
 
+## KI-Zugang
+
+Mit der Integration Beekeeper ab 0.2.0 kann eine KI im Portal mit Werkzeugen in Home Assistant arbeiten, solange jemand dort einen KI-Zugang geöffnet hat. Was sie darf (lesen, ändern, Benutzer verwalten), legt der Besitzer in den Optionen der Integration fest; ab Werk ist alles aus. Das Add-on reicht die Anfragen nur weiter.
+
 ## Hinweise
 
 - Fehlanmeldungen über den Fernzugriff zählen in Home Assistant für die Adresse des Add-ons. Ist die Sperre nach Fehlanmeldungen eingeschaltet (`login_attempts_threshold`), sperren zu viele davon den Fernzugriff, bis sie in `ip_bans.yaml` aufgehoben ist.

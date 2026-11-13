@@ -55,6 +55,18 @@ Einstellungen des Containers:
 
 Ohne Integration funktioniert der Agent auch; dann fehlen nur die Anzeige in Home Assistant und die Taste zum Beenden.
 
+## KI-Zugang
+
+Öffnet jemand im Portal einen *KI-Zugang* zu dieser Anlage (mit Zweck und Dauer, im Audit-Log), arbeitet seine KI mit Werkzeugen der Integration Beekeeper in Home Assistant. Was sie darf, legt der Besitzer in den Optionen der Integration fest (*Einstellungen › Geräte & Dienste › Beekeeper › Konfigurieren*); alles ist ab Werk aus und gilt sofort, auch in einem laufenden Zugang:
+
+| Schalter | Werkzeuge |
+|---|---|
+| KI-Zugang (lesen) | Übersicht (Version, Entitäten je Domäne, nicht verfügbare Entitäten, Integrationen mit Fehlern, Reparaturen, Updates), Entitäten, Zustände, Verlauf, Log von Home Assistant, Integrationen, Automationen und ihre Konfiguration |
+| Ändern erlauben | Dienste aufrufen, Integrationen neu laden, Home Assistant neu starten (nach Prüfung der Konfiguration) |
+| Benutzer verwalten | Benutzer auflisten, aktivieren und deaktivieren; das Portal kann eine Anmeldung für den Support anlegen (`device_create_ha_login`): es erzeugt das Passwort selbst und legt es in den Zugangsdaten der Anlage ab, die KI sieht es nie. Der Besitzer wird nie geändert. |
+
+Solange eine KI arbeitet, zeigt Home Assistant eine Benachrichtigung mit Person, Zweck und Ende; das Ereignis `beekeeper_ai_access` (start, end) steht für Automationen bereit. Dafür braucht es bee-ha ab 0.3.0 und die Integration ab 0.2.0; die Integration holt die Anfragen beim Agenten ab (lokale API, Long-Poll).
+
 ## Hinweise
 
 - Der Agent ändert nichts an Home Assistant und braucht dort kein Konto. Beim Fernzugriff meldet man sich mit einem Konto von Home Assistant an: automatisch, wenn im Portal an der Anlage eine Anmeldung an Home Assistant hinterlegt ist, sonst im Browser. Die automatische Anmeldung wird am Ende des Fernzugriffs in Home Assistant widerrufen; Konten mit Zwei-Faktor-Anmeldung gehen dafür nicht. Am besten ein eigenes Konto anlegen, z. B. „Support“.

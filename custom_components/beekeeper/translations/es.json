@@ -21,6 +21,24 @@
             "cannot_connect": "El agente no responde."
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Acceso de IA",
+                "description": "Lo que una IA puede hacer en este Home Assistant mientras alguien le abrió un acceso de IA en el portal (con motivo y duración, en el registro de auditoría, visible aquí como notificación). Los cambios valen al instante.",
+                "data": {
+                    "ai_read": "Acceso de IA (lectura)",
+                    "ai_write": "Permitir cambios",
+                    "ai_users": "Gestionar usuarios"
+                },
+                "data_description": {
+                    "ai_read": "Resumen, entidades, estados, historial, registro, integraciones y automatizaciones.",
+                    "ai_write": "Llamar a servicios (conmutar dispositivos, ejecutar scripts), recargar integraciones, reiniciar Home Assistant.",
+                    "ai_users": "Listar, activar y desactivar usuarios; el portal puede crear un acceso para el soporte y guarda su contraseña. Nunca el propietario."
+                }
+            }
+        }
+    },
     "entity": {
         "binary_sensor": {
             "connected": {

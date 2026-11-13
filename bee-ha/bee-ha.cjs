@@ -24215,7 +24215,197 @@ async function probeHomeAssistant(opts) {
 
 // bee-ha/src/local-api.ts
 var import_node_http = __toESM(require("node:http"), 1);
+
+// bee-ha/src/mcp-relay.ts
+var PRESENT_MS = 9e4;
+var MAX_WAIT_MS = 3e4;
+var ANSWER_MS = 105e3;
+var MAX_QUEUE = 20;
+var MAX_TOOLS = 200;
+var McpRelay = class {
+  /**
+   * @param answer sends the answer to the server
+   * @param changed presence or rights of the integration changed: the inventory says it
+   */
+  constructor(answer, changed) {
+    this.answer = answer;
+    this.changed = changed;
+  }
+  answer;
+  changed;
+  lastPoll = 0;
+  rights = null;
+  /** what the last inventory said, to notice a change */
+  reported = "";
+  queue = [];
+  waiters = [];
+  pending = /* @__PURE__ */ new Map();
+  /** The integration polls (or did within PRESENT_MS) */
+  get present() {
+    return this.waiters.length > 0 || Date.now() - this.lastPoll < PRESENT_MS;
+  }
+  /** For the inventory: undefined while the owner does not allow it, an error while the integration is missing */
+  access() {
+    this.reported = this.state();
+    if (!this.present) {
+      return {
+        user: "",
+        setState: false,
+        objectChange: false,
+        error: "die Integration Beekeeper (ab 0.2.0) ist in Home Assistant nicht eingerichtet oder nicht verbunden"
+      };
+    }
+    if (!this.rights?.read) {
+      return void 0;
+    }
+    return { user: "Integration Beekeeper", setState: this.rights.write, objectChange: this.rights.write, users: this.rights.users };
+  }
+  state() {
+    return JSON.stringify([this.present, this.rights]);
+  }
+  /** Checks for a change the inventory does not say yet: an integration that stopped polling, other rights */
+  tick() {
+    if (this.state() !== this.reported) {
+      this.changed();
+    }
+  }
+  /**
+   * A poll of the integration: the next request, or null after waitMs
+   *
+   * @param rights what its owner allows
+   * @param waitMs how long to wait for one
+   * @param gone resolves when the poll is given up (connection closed)
+   */
+  next(rights, waitMs, gone) {
+    this.lastPoll = Date.now();
+    this.rights = rights;
+    this.tick();
+    const queued = this.queue.shift();
+    if (queued) {
+      return Promise.resolve(queued);
+    }
+    return new Promise((resolve) => {
+      const done = (job) => {
+        clearTimeout(timer);
+        const i = this.waiters.indexOf(done);
+        if (i >= 0) {
+          this.waiters.splice(i, 1);
+        }
+        this.lastPoll = Date.now();
+        resolve(job);
+      };
+      const timer = setTimeout(() => done(null), Math.max(0, Math.min(MAX_WAIT_MS, waitMs)));
+      this.waiters.push(done);
+      void gone.then(() => {
+        if (this.waiters.includes(done)) {
+          done(null);
+        }
+      });
+    });
+  }
+  /** A request of the server (command 'mcp') */
+  request(ref, request) {
+    if (request.action === "close") {
+      if (this.present) {
+        this.deliver({ ref, request });
+      }
+      return;
+    }
+    if (!this.present) {
+      this.answer(ref, { state: "error", message: "Die Integration Beekeeper in Home Assistant ist nicht verbunden" });
+      return;
+    }
+    if (!this.rights?.read) {
+      this.answer(ref, { state: "error", message: "Der Besitzer hat den KI-Zugang in Home Assistant nicht erlaubt" });
+      return;
+    }
+    if (request.expiresAt < Date.now()) {
+      this.answer(ref, { state: "error", message: "Der KI-Zugang ist abgelaufen" });
+      return;
+    }
+    if (this.queue.length >= MAX_QUEUE) {
+      this.answer(ref, { state: "error", message: "Zu viele Anfragen auf einmal" });
+      return;
+    }
+    this.pending.set(
+      ref,
+      setTimeout(() => {
+        this.pending.delete(ref);
+        const i = this.queue.findIndex((q) => q.ref === ref);
+        if (i >= 0) {
+          this.queue.splice(i, 1);
+        }
+        this.answer(ref, { state: "error", message: "Die Integration Beekeeper antwortet nicht" });
+      }, ANSWER_MS)
+    );
+    this.deliver({ ref, request });
+  }
+  deliver(job) {
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter(job);
+    } else {
+      this.queue.push(job);
+    }
+  }
+  /**
+   * The answer of the integration
+   *
+   * @returns false: no request waits for it
+   */
+  reply(ref, body) {
+    const timer = this.pending.get(ref);
+    if (!timer) {
+      return false;
+    }
+    clearTimeout(timer);
+    this.pending.delete(ref);
+    this.answer(ref, parseReply(body));
+    return true;
+  }
+  stop() {
+    for (const t of this.pending.values()) {
+      clearTimeout(t);
+    }
+    this.pending.clear();
+    for (const w of [...this.waiters]) {
+      w(null);
+    }
+  }
+};
+function parseReply(body) {
+  const b = body && typeof body === "object" ? body : {};
+  if (typeof b.error === "string" && b.error) {
+    return { state: "error", message: b.error.slice(0, 1e3) };
+  }
+  const r = b.reply && typeof b.reply === "object" ? b.reply : null;
+  if (!r) {
+    return { state: "error", message: "Ung\xFCltige Antwort der Integration Beekeeper" };
+  }
+  const mcp = {};
+  if (Array.isArray(r.tools)) {
+    mcp.tools = r.tools.filter((t) => !!t && typeof t === "object" && typeof t.name === "string").slice(0, MAX_TOOLS);
+  }
+  if (r.result && typeof r.result === "object") {
+    const text = typeof r.result.text === "string" ? r.result.text : JSON.stringify(r.result.text ?? "");
+    const cut = text.length > MAX_MCP_RESULT;
+    mcp.result = {
+      text: cut ? text.slice(0, MAX_MCP_RESULT) : text,
+      isError: r.result.isError === true,
+      ...cut || r.result.truncated ? { truncated: true } : {}
+    };
+  }
+  return { state: "done", mcp };
+}
+function parseRights(value) {
+  const v = value && typeof value === "object" ? value : {};
+  const read = v.read === true;
+  return { read, write: read && v.write === true, users: read && v.users === true };
+}
+
+// bee-ha/src/local-api.ts
 var MAX_BODY = 4096;
+var MAX_REPLY_BODY = 4 * 1024 * 1024;
 var INSTALLATIONS = ["os", "supervised", "container", "core"];
 function parseHaInfo(body) {
   if (!body || typeof body !== "object") {
@@ -24234,13 +24424,13 @@ function parseHaInfo(body) {
   }
   return out;
 }
-function readBody(req) {
+function readBody(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     req.on("data", (c) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > max) {
         reject(new Error("too large"));
         req.destroy();
         return;
@@ -24307,6 +24497,20 @@ var LocalApi = class {
         const body = await readBody(req);
         const id = typeof body?.id === "string" && body.id ? body.id : void 0;
         send(res, 200, { ended: this.handlers.endSessions(id) });
+      } else if (req.method === "POST" && path === "/api/mcp/next") {
+        const body = await readBody(req);
+        const wait = typeof body?.wait === "number" && body.wait > 0 ? body.wait * 1e3 : 25e3;
+        const gone = new Promise((r) => res.once("close", () => r()));
+        const job = await this.handlers.mcpNext(parseRights(body?.ai), wait, gone);
+        if (job) {
+          send(res, 200, job);
+        } else if (!res.destroyed) {
+          send(res, 204);
+        }
+      } else if (req.method === "POST" && path === "/api/mcp/reply") {
+        const body = await readBody(req, MAX_REPLY_BODY);
+        const ok = typeof body?.ref === "string" && this.handlers.mcpReply(body.ref, body);
+        send(res, ok ? 204 : 404, ok ? void 0 : { error: "no such request" });
       } else {
         send(res, 404, { error: "not found" });
       }
@@ -24851,7 +25055,7 @@ var TunnelClient = class {
 };
 
 // bee-ha/src/agent.ts
-var AGENT_VERSION = "0.2.0";
+var AGENT_VERSION = "0.3.0";
 var OWNER_ENDED = "Vom Besitzer in Home Assistant beendet";
 var HA_INSTANCE = "homeassistant";
 async function enroll(url, req) {
@@ -24890,7 +25094,9 @@ function buildInventory(input) {
     remoteAccess: input.config.remoteAccess ? ["ha"] : [],
     // offered also while Home Assistant does not answer: the portal shows that, the browser gets an error page
     accessTargets: { ha: [{ instance: HA_INSTANCE, port: t.port, secure: t.secure, auth: true }] },
-    commands: [],
+    // the AI session, carried to the integration Beekeeper; no command of ioBroker
+    commands: ["mcp"],
+    ...input.ai ? { ai: input.ai } : {},
     // node empty on purpose: the Node.js of the agent is no matter of the installation (no warning about its end)
     software: { jsController: "", node: "", npm: "", adapters: {}, instances: {} },
     system: {
@@ -24919,6 +25125,20 @@ var Agent = class {
   constructor(config2, log2) {
     this.config = config2;
     this.log = log2;
+    this.relay = new McpRelay(
+      (ref, a) => void this.transport?.publish("reply", {
+        v: PROTOCOL_VERSION,
+        ts: Date.now(),
+        ref,
+        state: a.state,
+        ...a.state === "done" ? { mcp: a.mcp } : { message: a.message }
+      }),
+      () => {
+        if (this.transport) {
+          void this.checkHomeAssistant(false);
+        }
+      }
+    );
   }
   config;
   log;
@@ -24937,6 +25157,8 @@ var Agent = class {
   /** Why the agent does not work, for the integration */
   problem = null;
   localApi = null;
+  /** Requests of AI sessions to the integration Beekeeper */
+  relay;
   /** Enrolled and connected to the broker */
   get connected() {
     return !!this.transport?.connected;
@@ -24975,7 +25197,9 @@ var Agent = class {
             void this.checkHomeAssistant(false);
           }
         },
-        endSessions: (id) => this.endSessions(id, OWNER_ENDED)
+        endSessions: (id) => this.endSessions(id, OWNER_ENDED),
+        mcpNext: (rights, wait, gone) => this.relay.next(rights, wait, gone),
+        mcpReply: (ref, body) => this.relay.reply(ref, body)
       },
       this.log
     );
@@ -25035,6 +25259,7 @@ var Agent = class {
     for (const t of this.tunnels.values()) {
       t.stop("agent stops");
     }
+    this.relay.stop();
     await this.localApi?.close();
     await this.transport?.stop();
   }
@@ -25106,6 +25331,7 @@ var Agent = class {
     transport.start();
     this.timers.push(setInterval(() => void this.sendState(), this.config.heartbeat * 1e3));
     this.timers.push(setInterval(() => void this.checkHomeAssistant(false), this.config.check * 1e3));
+    this.timers.push(setInterval(() => this.relay.tick(), 3e4));
   }
   async sendState() {
     const d = await disk(this.config.haConfig || this.config.dataDir);
@@ -25127,7 +25353,13 @@ var Agent = class {
       try {
         const ha = await probeHomeAssistant({ ...this.config, pushed: this.pushed });
         const d = await disk(this.config.haConfig || this.config.dataDir);
-        const inv = buildInventory({ uuid: this.uuid, config: this.config, ha, diskTotal: d?.total ?? 0 });
+        const inv = buildInventory({
+          uuid: this.uuid,
+          config: this.config,
+          ha,
+          diskTotal: d?.total ?? 0,
+          ai: this.relay.access()
+        });
         const text = JSON.stringify(inv);
         if (!force && text === this.lastInventory) {
           return;
@@ -25155,6 +25387,16 @@ var Agent = class {
     }
     if (job.cmd === "tunnel" && job.tunnel) {
       this.openTunnel(job.tunnel);
+      return;
+    }
+    if (job.cmd === "mcp" && job.ref && job.mcp) {
+      const m = job.mcp;
+      if (m.action === "open") {
+        this.log.info(`AI session ${m.session} of ${m.by} until ${new Date(m.expiresAt).toISOString()}: ${m.purpose}`);
+      } else if (m.action === "close") {
+        this.log.info(`AI session ${m.session} ended`);
+      }
+      this.relay.request(job.ref, m);
       return;
     }
     if (job.ref) {

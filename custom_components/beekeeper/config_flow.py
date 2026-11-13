@@ -6,12 +6,13 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_URL
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import BeekeeperAgent, BeekeeperAgentError
-from .const import DEFAULT_URL, DOMAIN
+from .const import CONF_AI_READ, CONF_AI_USERS, CONF_AI_WRITE, DEFAULT_URL, DOMAIN
 
 try:  # since 2025.1
     from homeassistant.helpers.service_info.hassio import HassioServiceInfo
@@ -21,6 +22,11 @@ except ImportError:  # pragma: no cover
 
 class BeekeeperConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return BeekeeperOptionsFlow()
 
     def __init__(self) -> None:
         self._url: str | None = None
@@ -68,3 +74,34 @@ class BeekeeperConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title="Beekeeper", data={CONF_URL: self._url})
         self._set_confirm_only()
         return self.async_show_form(step_id="hassio_confirm")
+
+
+class BeekeeperOptionsFlow(OptionsFlow):
+    """What an AI may do in Home Assistant during an AI session of the portal; all off by default.
+
+    Read without the others: overview, entities, states, history, log, integrations, automations. Change: call
+    services, reload integrations, restart. Users: list, create (only the portal, which keeps the password) and
+    enable or disable users. Changes take effect at once, also in a running session.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            read = bool(user_input.get(CONF_AI_READ))
+            return self.async_create_entry(
+                data={
+                    CONF_AI_READ: read,
+                    CONF_AI_WRITE: read and bool(user_input.get(CONF_AI_WRITE)),
+                    CONF_AI_USERS: read and bool(user_input.get(CONF_AI_USERS)),
+                }
+            )
+        options = self.config_entry.options
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_AI_READ, default=bool(options.get(CONF_AI_READ, False))): bool,
+                    vol.Required(CONF_AI_WRITE, default=bool(options.get(CONF_AI_WRITE, False))): bool,
+                    vol.Required(CONF_AI_USERS, default=bool(options.get(CONF_AI_USERS, False))): bool,
+                }
+            ),
+        )

@@ -1,5 +1,5 @@
 name: Beekeeper
-version: "0.2.0"
+version: "0.3.0"
 slug: bee_ha
 description: Fernzugriff auf Home Assistant über beekeeper, ohne offene Ports und zeitlich begrenzt
 url: https://github.com/ioSofting/beekeeper-homeassistant

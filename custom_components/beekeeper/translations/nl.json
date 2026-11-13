@@ -21,6 +21,24 @@
             "cannot_connect": "De agent reageert niet."
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "AI-toegang",
+                "description": "Wat een AI in deze Home Assistant mag doen zolang iemand er in het portaal een AI-toegang voor heeft geopend (met doel en duur, in het auditlog, hier zichtbaar als melding). Wijzigingen gelden meteen.",
+                "data": {
+                    "ai_read": "AI-toegang (lezen)",
+                    "ai_write": "Wijzigingen toestaan",
+                    "ai_users": "Gebruikers beheren"
+                },
+                "data_description": {
+                    "ai_read": "Overzicht, entiteiten, toestanden, geschiedenis, log, integraties en automatiseringen.",
+                    "ai_write": "Services aanroepen (apparaten schakelen, scripts starten), integraties herladen, Home Assistant herstarten.",
+                    "ai_users": "Gebruikers tonen, activeren en deactiveren; het portaal kan een login voor de support aanmaken en bewaart het wachtwoord. Nooit de eigenaar."
+                }
+            }
+        }
+    },
     "entity": {
         "binary_sensor": {
             "connected": {

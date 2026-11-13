@@ -21,6 +21,24 @@
             "cannot_connect": "代理无响应。"
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "AI 访问",
+                "description": "当有人在门户中为此 Home Assistant 打开 AI 访问时（有目的和期限，记录在审计日志中，此处以通知显示），AI 可以执行的操作。更改立即生效。",
+                "data": {
+                    "ai_read": "AI 访问（读取）",
+                    "ai_write": "允许更改",
+                    "ai_users": "管理用户"
+                },
+                "data_description": {
+                    "ai_read": "概览、实体、状态、历史、日志、集成和自动化。",
+                    "ai_write": "调用服务（切换设备、运行脚本）、重新加载集成、重启 Home Assistant。",
+                    "ai_users": "列出、启用和停用用户；门户可以为支持人员创建登录并保管其密码。绝不涉及所有者。"
+                }
+            }
+        }
+    },
     "entity": {
         "binary_sensor": {
             "connected": {

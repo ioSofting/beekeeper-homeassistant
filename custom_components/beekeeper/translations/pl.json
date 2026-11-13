@@ -21,6 +21,24 @@
             "cannot_connect": "Agent nie odpowiada."
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Dostęp AI",
+                "description": "Co AI może robić w tym Home Assistant, dopóki ktoś otworzył dla niej dostęp AI w portalu (z celem i czasem, w dzienniku audytu, widoczne tu jako powiadomienie). Zmiany działają od razu.",
+                "data": {
+                    "ai_read": "Dostęp AI (odczyt)",
+                    "ai_write": "Zezwól na zmiany",
+                    "ai_users": "Zarządzaj użytkownikami"
+                },
+                "data_description": {
+                    "ai_read": "Przegląd, encje, stany, historia, log, integracje i automatyzacje.",
+                    "ai_write": "Wywoływanie usług (przełączanie urządzeń, uruchamianie skryptów), przeładowanie integracji, restart Home Assistant.",
+                    "ai_users": "Wyświetlanie, włączanie i wyłączanie użytkowników; portal może utworzyć konto dla wsparcia i przechowuje jego hasło. Nigdy właściciela."
+                }
+            }
+        }
+    },
     "entity": {
         "binary_sensor": {
             "connected": {

@@ -21,6 +21,24 @@
             "cannot_connect": "Der Agent antwortet nicht."
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "KI-Zugang",
+                "description": "Was eine KI in diesem Home Assistant tun darf, solange jemand im Portal einen KI-Zugang dafür geöffnet hat (mit Zweck und Dauer, im Audit-Log, hier als Benachrichtigung zu sehen). Änderungen gelten sofort.",
+                "data": {
+                    "ai_read": "KI-Zugang (lesen)",
+                    "ai_write": "Ändern erlauben",
+                    "ai_users": "Benutzer verwalten"
+                },
+                "data_description": {
+                    "ai_read": "Übersicht, Entitäten, Zustände, Verlauf, Log, Integrationen und Automationen.",
+                    "ai_write": "Dienste aufrufen (Geräte schalten, Skripte starten), Integrationen neu laden, Home Assistant neu starten.",
+                    "ai_users": "Benutzer auflisten, aktivieren und deaktivieren; das Portal kann eine Anmeldung für den Support anlegen und verwahrt ihr Passwort. Nie der Besitzer."
+                }
+            }
+        }
+    },
     "entity": {
         "binary_sensor": {
             "connected": {

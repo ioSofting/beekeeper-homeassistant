@@ -21,6 +21,24 @@
             "cannot_connect": "The agent does not answer."
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "AI access",
+                "description": "What an AI may do in this Home Assistant while somebody opened an AI session for it in the portal (for a purpose and a time, in the audit log, shown here as a notification). Changes take effect at once.",
+                "data": {
+                    "ai_read": "AI access (read)",
+                    "ai_write": "Allow changes",
+                    "ai_users": "Manage users"
+                },
+                "data_description": {
+                    "ai_read": "Overview, entities, states, history, log, integrations and automations.",
+                    "ai_write": "Call services (switch devices, run scripts), reload integrations, restart Home Assistant.",
+                    "ai_users": "List, enable and disable users; the portal can create a login for the support and keeps its password. Never the owner."
+                }
+            }
+        }
+    },
     "entity": {
         "binary_sensor": {
             "connected": {
