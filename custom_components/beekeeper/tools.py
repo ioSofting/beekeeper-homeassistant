@@ -605,6 +605,12 @@ async def get_logbook(hass: HomeAssistant, args: dict[str, Any]) -> Any:
     entity_ids = [i.strip().lower() for i in ids[:50]] if ids else None
     device_id = _str(args, "device_id")
     device_ids = [device_id] if device_id else None
+    if device_id:
+        # as the page of a device: its events and the changes of its entities
+        if dr.async_get(hass).async_get(device_id) is None:
+            raise ToolError(f"No device {device_id} (see list_devices)")
+        own = [e.entity_id for e in er.async_entries_for_device(er.async_get(hass), device_id)]
+        entity_ids = sorted({*(entity_ids or []), *own}) or None
     narrow = bool(entity_ids or device_ids)
     hours = _int(args, "hours", 24, 1, 24 * 30 if narrow else 72)
     limit = _int(args, "limit", 200, 1, 2000)
