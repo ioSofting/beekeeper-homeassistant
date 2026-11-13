@@ -63,7 +63,7 @@ Ohne Integration funktioniert der Agent auch; dann fehlen nur die Anzeige in Hom
 |---|---|
 | KI-Zugang (lesen) | Übersicht (Version, Entitäten je Domäne, nicht verfügbare Entitäten, Integrationen mit Fehlern, Reparaturen, Updates), Entitäten, Zustände, Verlauf, Log von Home Assistant, Integrationen, Automationen und ihre Konfiguration |
 | Ändern erlauben | Dienste aufrufen, Integrationen neu laden, Home Assistant neu starten (nach Prüfung der Konfiguration) |
-| Benutzer verwalten | Benutzer auflisten, aktivieren und deaktivieren; das Portal kann eine Anmeldung für den Support anlegen (`device_create_ha_login`): es erzeugt das Passwort selbst und legt es in den Zugangsdaten der Anlage ab, die KI sieht es nie. Der Besitzer wird nie geändert. |
+| Benutzer verwalten | Benutzer auflisten, aktivieren und deaktivieren, das Beekeeper-Icon als Bild setzen; das Portal kann eine Anmeldung für den Support anlegen (`device_create_ha_login`): es erzeugt das Passwort selbst und legt es in den Zugangsdaten der Anlage ab, die KI sieht es nie. Der Besitzer wird nie geändert. |
 
 Solange eine KI arbeitet, zeigt Home Assistant eine Benachrichtigung mit Person, Zweck und Ende; das Ereignis `beekeeper_ai_access` (start, end) steht für Automationen bereit. Dafür braucht es bee-ha ab 0.3.0 und die Integration ab 0.2.0; die Integration holt die Anfragen beim Agenten ab (lokale API, Long-Poll).
 

@@ -10,6 +10,7 @@ create_user is called only by the portal: it makes the password and keeps it in 
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import re
@@ -38,6 +39,8 @@ LOG_ENTRY = re.compile(r"^\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,49}$")
 CONFIG_ENTRY_PROBLEMS = {"setup_error", "migration_error", "setup_retry", "failed_unload"}
+# the icon of Beekeeper, as picture of a user (e.g. the login of the support)
+ICON = os.path.join(os.path.dirname(__file__), "brand", "icon@2x.png")
 
 
 class ToolError(Exception):
@@ -55,6 +58,8 @@ class Tool:
     right: str
     run: Callable[[HomeAssistant, dict[str, Any]], Awaitable[Any]]
     destructive: bool = False
+    # only reads, also when it needs another switch than read (list_users)
+    reads: bool = False
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -62,7 +67,7 @@ class Tool:
             "title": self.title,
             "description": self.description,
             "inputSchema": {"type": "object", "properties": self.properties, "required": list(self.required)},
-            "annotations": {"readOnlyHint": self.right == "read", "destructiveHint": self.destructive},
+            "annotations": {"readOnlyHint": self.right == "read" or self.reads, "destructiveHint": self.destructive},
         }
 
 
@@ -554,6 +559,60 @@ async def set_user_active(hass: HomeAssistant, args: dict[str, Any]) -> Any:
     return {"user_id": user.id, "name": user.name, "active": active}
 
 
+async def _upload_icon(hass: HomeAssistant) -> str:
+    """The icon of Beekeeper into the images of Home Assistant, as the frontend uploads one; its address."""
+    from aiohttp.web_request import FileField
+    from multidict import CIMultiDict, CIMultiDictProxy
+
+    images = hass.data.get("image_upload")
+    if images is None:
+        raise ToolError("Images cannot be uploaded in this Home Assistant (image_upload is not loaded)")
+    data = await hass.async_add_executor_job(_read_file, ICON)
+    upload = FileField(
+        name="file",
+        filename="beekeeper.png",
+        file=io.BytesIO(data),
+        content_type="image/png",
+        headers=CIMultiDictProxy(CIMultiDict()),
+    )
+    item = await images.async_create_item({"file": upload})
+    return f"/api/image/serve/{item['id']}/512x512"
+
+
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
+async def set_user_picture(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    username = _str(args, "username").lower()
+    user_id = _str(args, "user_id")
+    picture = _str(args, "picture") or "beekeeper"
+    user = await hass.auth.async_get_user(user_id) if user_id else await _user_by_username(hass, username)
+    if user is None:
+        raise ToolError("No such user (see list_users)")
+    if user.is_owner or user.system_generated:
+        raise ToolError("The owner of Home Assistant and users of the system are not changed")
+    persons = hass.data.get("person")
+    storage = getattr(persons, "storage_collection", None)
+    if storage is None:
+        raise ToolError("The integration person is not loaded")
+    person = next((p for p in storage.async_items() if p.get("user_id") == user.id), None)
+    if person is None:
+        raise ToolError(f"{user.name} has no person in Home Assistant (Settings, People)")
+    if picture == "beekeeper":
+        url: str | None = await _upload_icon(hass)
+    elif picture == "none":
+        url = None
+    else:
+        raise ToolError('picture: "beekeeper" or "none"')
+    # the update schema sets missing device trackers to none: keep them
+    await storage.async_update_item(
+        person["id"], {"picture": url, "device_trackers": list(person.get("device_trackers") or [])}
+    )
+    return {"user": user.name, "person": person.get("name"), "picture": url}
+
+
 # ---------------------------------------------------------------------------------------------- list
 
 ENTITY_ID = {"type": "string", "description": 'Entity id, e.g. "light.kitchen"'}
@@ -696,6 +755,7 @@ TOOLS: list[Tool] = [
         (),
         "users",
         list_users,
+        reads=True,
     ),
     Tool(
         "create_user",
@@ -727,6 +787,20 @@ TOOLS: list[Tool] = [
         "users",
         set_user_active,
         destructive=True,
+    ),
+    Tool(
+        "set_user_picture",
+        "Picture of a user",
+        "Gives the person of a user (not the owner) the icon of Beekeeper as picture, e.g. for the login of the "
+        'support, or takes the picture away ("none").',
+        {
+            "username": {"type": "string", "description": "Login name, from list_users"},
+            "user_id": {"type": "string", "description": "Or its id"},
+            "picture": {"type": "string", "enum": ["beekeeper", "none"], "description": "beekeeper (default) or none"},
+        },
+        (),
+        "users",
+        set_user_picture,
     ),
 ]
 
