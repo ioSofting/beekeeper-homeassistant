@@ -32,7 +32,7 @@
                     "ai_users": "Gebruikers beheren"
                 },
                 "data_description": {
-                    "ai_read": "Overzicht, entiteiten, toestanden, geschiedenis, log, integraties en automatiseringen.",
+                    "ai_read": "Overzicht, entiteiten, apparaten, toestanden, geschiedenis, logboek, log, integraties met diagnose, systeemstatus, reparaties, automatiseringen en hun traces.",
                     "ai_write": "Services aanroepen (apparaten schakelen, scripts starten), integraties herladen, Home Assistant herstarten.",
                     "ai_users": "Gebruikers tonen, activeren en deactiveren; het portaal kan een login voor de support aanmaken en bewaart het wachtwoord. Nooit de eigenaar."
                 }

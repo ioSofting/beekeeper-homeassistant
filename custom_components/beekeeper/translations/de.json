@@ -32,7 +32,7 @@
                     "ai_users": "Benutzer verwalten"
                 },
                 "data_description": {
-                    "ai_read": "Übersicht, Entitäten, Zustände, Verlauf, Log, Integrationen und Automationen.",
+                    "ai_read": "Übersicht, Entitäten, Geräte, Zustände, Verlauf, Logbuch, Log, Integrationen mit Diagnose, Systemzustand, Reparaturen, Automationen und ihre Traces.",
                     "ai_write": "Dienste aufrufen (Geräte schalten, Skripte starten), Integrationen neu laden, Home Assistant neu starten.",
                     "ai_users": "Benutzer auflisten, aktivieren und deaktivieren; das Portal kann eine Anmeldung für den Support anlegen und verwahrt ihr Passwort. Nie der Besitzer."
                 }

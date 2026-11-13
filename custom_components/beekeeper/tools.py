@@ -2,8 +2,9 @@
 
 An AI of the integrator reaches them only during an AI session that a person opened in the portal, for a purpose and
 a time; every call is in the audit log of the portal. What they may do decides the owner in the options of this
-integration: read (overview, entities, states, history, log, integrations, automations), write (call services,
-reload integrations, restart) and users (list, create, enable and disable users). All of it is off by default.
+integration: read (overview, entities, states, history, log, integrations, automations and their traces,
+diagnostics, system health, repairs, logbook, devices), write (call services, reload integrations, restart) and
+users (list, create, enable and disable users). All of it is off by default.
 create_user is called only by the portal: it makes the password and keeps it in its access data.
 """
 
@@ -406,6 +407,300 @@ async def get_automation_config(hass: HomeAssistant, args: dict[str, Any]) -> An
     return config
 
 
+def _when(value: Any) -> str:
+    """A time for sorting: kept traces have datetimes, restored ones ISO texts."""
+    return value.isoformat() if hasattr(value, "isoformat") else str(value or "")
+
+
+async def get_automation_trace(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    entity_id = _str(args, "entity_id", required=True).lower()
+    run_id = _str(args, "run_id")
+    count = _int(args, "runs", 10, 1, 50)
+    domain = entity_id.split(".", 1)[0]
+    if domain not in ("automation", "script"):
+        raise ToolError("entity_id: an automation or a script, e.g. automation.night")
+    if "trace" not in hass.config.components:
+        raise ToolError("The integration trace is not loaded: Home Assistant keeps no traces")
+    from homeassistant.components.trace.util import async_get_trace, async_list_traces
+
+    entry = er.async_get(hass).async_get(entity_id)
+    item_id = entry.unique_id if entry else None
+    if not item_id:
+        st = hass.states.get(entity_id)
+        if st is None:
+            raise ToolError(f"No {domain} {entity_id}")
+        item_id = st.attributes.get("id") if domain == "automation" else entity_id.split(".", 1)[1]
+    if not item_id:
+        raise ToolError(f"{entity_id} has no id: Home Assistant keeps traces only of automations with an id")
+    key = f"{domain}.{item_id}"
+    runs = sorted(
+        await async_list_traces(hass, domain, key),
+        key=lambda r: _when((r.get("timestamp") or {}).get("start")),
+        reverse=True,
+    )
+    out: dict[str, Any] = {
+        "entity_id": entity_id,
+        "runs": runs[:count],
+        **({"note": f"{len(runs)} traces kept, the newest {count} listed"} if len(runs) > count else {}),
+    }
+    if not run_id:
+        run_id = next((r["run_id"] for r in runs if not r.get("not_triggered")), "")
+    if not run_id:
+        out["trace"] = None
+        out["note"] = "No run kept: it did not run since Home Assistant keeps traces (stored_traces, default 5)"
+        return out
+    try:
+        trace = dict(await async_get_trace(hass, key, run_id))
+    except KeyError as err:
+        raise ToolError(f"No trace {run_id} of {entity_id} (see runs)") from err
+    if not _bool(args, "include_config", False):
+        trace.pop("config", None)
+        trace.pop("blueprint_inputs", None)
+    out["trace"] = trace
+    return out
+
+
+def _find_entry(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    entry_id = _str(args, "entry_id")
+    domain = _str(args, "domain").lower()
+    if entry_id:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            raise ToolError(f"No integration entry {entry_id} (see list_integrations)")
+        return entry
+    if not domain:
+        raise ToolError('Argument "entry_id" or "domain" is missing (see list_integrations)')
+    entries = hass.config_entries.async_entries(domain)
+    if not entries:
+        raise ToolError(f"The integration {domain} is not configured")
+    if len(entries) > 1:
+        names = ", ".join(f"{e.entry_id} ({e.title})" for e in entries)
+        raise ToolError(f"{domain} has {len(entries)} entries, give entry_id: {names}")
+    return entries[0]
+
+
+def _device_entry_id(device: Any) -> str | None:
+    """The config entry of a device (one since 2026; before, a set of them)."""
+    entry_id = getattr(device, "config_entry_id", None) or getattr(device, "primary_config_entry", None)
+    if entry_id:
+        return entry_id
+    return next(iter(getattr(device, "config_entries", None) or ()), None)
+
+
+async def get_diagnostics(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    entry = _find_entry(hass, args)
+    device_id = _str(args, "device_id")
+    diag = hass.data.get("diagnostics")
+    platforms = getattr(diag, "platforms", diag)
+    info = platforms.get(entry.domain) if isinstance(platforms, dict) else None
+    if info is None:
+        raise ToolError(f"{entry.domain} has no diagnostics (see read_log and list_integrations instead)")
+    if device_id:
+        device = dr.async_get(hass).async_get(device_id)
+        if device is None:
+            raise ToolError(f"No device {device_id} (see list_devices)")
+        if _device_entry_id(device) != entry.entry_id and entry.entry_id not in (
+            getattr(device, "config_entries", None) or ()
+        ):
+            raise ToolError(f"The device {device_id} does not belong to {entry.title}")
+        if info.device_diagnostics is None:
+            raise ToolError(f"{entry.domain} has no diagnostics of devices; leave device_id out")
+        data = await info.device_diagnostics(hass, entry, device)
+    else:
+        if info.config_entry_diagnostics is None:
+            raise ToolError(f"{entry.domain} has diagnostics only of devices: give device_id (see list_devices)")
+        data = await info.config_entry_diagnostics(hass, entry)
+    from homeassistant.helpers import issue_registry as ir
+    from homeassistant.loader import async_get_integration
+
+    integration = await async_get_integration(hass, entry.domain)
+    issues = [
+        {"issue_id": i.issue_id, "severity": getattr(i.severity, "value", i.severity), "active": i.active}
+        for (domain, _), i in ir.async_get(hass).issues.items()
+        if domain == entry.domain
+    ]
+    return {
+        "domain": entry.domain,
+        "title": entry.title,
+        "entry_id": entry.entry_id,
+        "state": entry.state.value,
+        "integration_version": None if integration.is_built_in else str(integration.version),
+        "issues": issues,
+        "data": data,
+    }
+
+
+async def get_system_health(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    if "system_health" not in hass.config.components:
+        raise ToolError("The integration system_health is not loaded")
+    from homeassistant.components.system_health import get_info
+
+    try:
+        async with asyncio.timeout(45):
+            info = await get_info(hass)
+    except TimeoutError as err:
+        raise ToolError("System health did not answer within 45 s") from err
+    domain = _str(args, "domain").lower()
+    if domain:
+        if domain not in info:
+            raise ToolError(f"No system health of {domain}; there are: {', '.join(sorted(info))}")
+        return {domain: info[domain]}
+    return info
+
+
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+def _fill(text: str | None, placeholders: dict[str, Any] | None) -> str | None:
+    if not text or not placeholders:
+        return text
+    return PLACEHOLDER.sub(lambda m: str(placeholders.get(m.group(1), m.group(0))), text)
+
+
+async def list_repairs(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    from homeassistant.helpers import issue_registry as ir
+    from homeassistant.helpers.translation import async_get_translations
+
+    with_ignored = _bool(args, "include_ignored", False)
+    registry = ir.async_get(hass)
+    hidden = getattr(registry, "async_is_hidden", None)
+    issues = [
+        i
+        for i in registry.issues.values()
+        if i.active and (with_ignored or not i.dismissed_version) and not (hidden and hidden(i))
+    ]
+    texts = await async_get_translations(hass, "en", "issues", {i.domain for i in issues}) if issues else {}
+    out = []
+    for i in sorted(issues, key=lambda i: (i.domain, i.issue_id)):
+        prefix = f"component.{i.domain}.issues.{i.translation_key or i.issue_id}."
+        description = texts.get(prefix + "description") or next(
+            (v for k, v in texts.items() if k.startswith(prefix + "fix_flow.step.") and k.endswith(".description")),
+            None,
+        )
+        severity = getattr(i.severity, "value", i.severity)
+        out.append(
+            {
+                "domain": i.domain,
+                **({"for": i.issue_domain} if i.issue_domain and i.issue_domain != i.domain else {}),
+                "issue_id": i.issue_id,
+                "severity": severity,
+                "title": _fill(texts.get(prefix + "title"), i.translation_placeholders),
+                "description": (_fill(description, i.translation_placeholders) or "")[:3000] or None,
+                "fixable": bool(i.is_fixable),
+                "breaks_in": i.breaks_in_ha_version,
+                "learn_more": i.learn_more_url,
+                "created": _iso(i.created),
+                **({"ignored": True} if i.dismissed_version else {}),
+            }
+        )
+    return out
+
+
+async def get_logbook(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    ids = args.get("entity_ids") or args.get("entity_id")
+    if isinstance(ids, str):
+        ids = [ids]
+    if ids is not None and (not isinstance(ids, list) or not all(isinstance(i, str) for i in ids)):
+        raise ToolError('Argument "entity_ids" must be a list of entity ids')
+    entity_ids = [i.strip().lower() for i in ids[:50]] if ids else None
+    device_id = _str(args, "device_id")
+    device_ids = [device_id] if device_id else None
+    narrow = bool(entity_ids or device_ids)
+    hours = _int(args, "hours", 24, 1, 24 * 30 if narrow else 72)
+    limit = _int(args, "limit", 200, 1, 2000)
+    if "logbook" not in hass.config.components or "recorder" not in hass.config.components:
+        raise ToolError("The logbook or the recorder of Home Assistant is not running")
+    from homeassistant.components.logbook.helpers import async_determine_event_types
+    from homeassistant.components.logbook.processor import EventProcessor
+    from homeassistant.components.recorder import get_instance
+
+    end = dt_util.utcnow()
+    start = end - timedelta(hours=hours)
+    processor = EventProcessor(
+        hass,
+        async_determine_event_types(hass, entity_ids, device_ids),
+        entity_ids,
+        device_ids,
+        None,
+        timestamp=False,
+        include_entity_name=True,
+    )
+    events = await get_instance(hass).async_add_executor_job(processor.get_events, start, end)
+    users = {u.id: u.name for u in await hass.auth.async_get_users()}
+    picked = events[-limit:]
+    for e in picked:
+        if e.get("context_user_id"):
+            e["context_user"] = users.get(e["context_user_id"], e["context_user_id"])
+        e.pop("icon", None)
+    return {
+        "since": _iso(start),
+        "events": picked,
+        **({"note": f"{len(events)} entries, the newest {limit}"} if len(events) > limit else {}),
+    }
+
+
+def _field(obj: Any, name: str) -> Any:
+    """A field of a registry entry, without the deprecated fallbacks of child devices."""
+    fields = getattr(type(obj), "__attrs_attrs__", None)
+    if fields is not None and name not in {a.name for a in fields}:
+        return None
+    return getattr(obj, name, None)
+
+
+async def list_devices(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    query = _str(args, "query").lower()
+    area_wanted = _str(args, "area").lower()
+    domain = _str(args, "domain").lower()
+    only_problems = _bool(args, "unavailable_only", False)
+    limit = _int(args, "limit", 200, 1, 2000)
+    dev_reg, ent_reg, area_reg = dr.async_get(hass), er.async_get(hass), ar.async_get(hass)
+    entities: dict[str, list[str]] = {}
+    for ent in ent_reg.entities.values():
+        if ent.device_id and not ent.disabled_by:
+            entities.setdefault(ent.device_id, []).append(ent.entity_id)
+    rows = []
+    matched = 0
+    for device in dev_reg.devices.values():
+        entry_id = _device_entry_id(device)
+        entry = hass.config_entries.async_get_entry(entry_id) if entry_id else None
+        if domain and (entry is None or entry.domain != domain):
+            continue
+        name = device.name_by_user or device.name or ""
+        area = area_reg.async_get_area(device.area_id) if device.area_id else None
+        if query and query not in name.lower() and query not in str(_field(device, "model") or "").lower():
+            continue
+        if area_wanted and (area is None or area_wanted not in area.name.lower()):
+            continue
+        ids = sorted(entities.get(device.id, []))
+        unavailable = [i for i in ids if (st := hass.states.get(i)) is not None and st.state == "unavailable"]
+        if only_problems and not unavailable:
+            continue
+        matched += 1
+        if len(rows) >= limit:
+            continue
+        parent = _field(device, "parent_device_id") or _field(device, "via_device_id")
+        row = {
+            "id": device.id,
+            "name": name,
+            "manufacturer": _field(device, "manufacturer"),
+            "model": _field(device, "model"),
+            "sw_version": _field(device, "sw_version"),
+            "hw_version": _field(device, "hw_version"),
+            "area": area.name if area else None,
+            "integration": entry.domain if entry else None,
+            "entry_id": entry_id,
+            "entities": len(ids),
+            "unavailable": unavailable,
+        }
+        if parent:
+            via = dev_reg.async_get(parent)
+            row["via"] = (via.name_by_user or via.name) if via else parent
+        if device.disabled_by:
+            row["disabled_by"] = str(device.disabled_by)
+        rows.append({k: v for k, v in row.items() if v not in (None, [])})
+    return {"matched": matched, "devices": rows}
+
+
 # ---------------------------------------------------------------------------------------------- write
 
 
@@ -706,6 +1001,88 @@ TOOLS: list[Tool] = [
         get_automation_config,
     ),
     Tool(
+        "get_automation_trace",
+        "Trace of an automation or script",
+        "The last runs of an automation or a script (trigger, state, error, last step) and, step by step, one "
+        "run: which trigger fired, which conditions passed or failed, what each action did, the variables. "
+        "The way to find out why an automation did not do what it should.",
+        {
+            "entity_id": {"type": "string", "description": 'e.g. "automation.night" or "script.goodbye"'},
+            "run_id": {"type": "string", "description": "This run, from runs; the newest run if left out"},
+            "runs": {"type": "number", "description": "List this many runs, the newest (10, up to 50)"},
+            "include_config": {"type": "boolean", "description": "Also the configuration of the run (false)"},
+        },
+        ("entity_id",),
+        "read",
+        get_automation_trace,
+    ),
+    Tool(
+        "get_diagnostics",
+        "Diagnostics of an integration",
+        "The diagnostics of an integration entry or one of its devices, as Home Assistant offers them for bug "
+        "reports (the integration hides passwords and keys in them), with its repairs.",
+        {
+            "entry_id": {"type": "string", "description": "From list_integrations"},
+            "domain": {"type": "string", "description": "Or the integration, if it has one entry"},
+            "device_id": {"type": "string", "description": "Diagnostics of this device of it (from list_devices)"},
+        },
+        (),
+        "read",
+        get_diagnostics,
+    ),
+    Tool(
+        "get_system_health",
+        "System health",
+        "System health of Home Assistant: installation type, versions, database, cloud, Supervisor, "
+        "integrations that report their state.",
+        {"domain": {"type": "string", "description": 'Only this part, e.g. "homeassistant" or "recorder"'}},
+        (),
+        "read",
+        get_system_health,
+    ),
+    Tool(
+        "list_repairs",
+        "List repairs",
+        "The repairs Home Assistant shows (Settings, Repairs) with title, description, severity, the version "
+        "that breaks and a link to learn more.",
+        {"include_ignored": {"type": "boolean", "description": "Also those the owner ignored (false)"}},
+        (),
+        "read",
+        list_repairs,
+    ),
+    Tool(
+        "get_logbook",
+        "Logbook",
+        "What happened, newest last: changes of entities and what caused them (a user, an automation, a "
+        "script, a service), starts of automations. Filtered by entities or a device; to find out why "
+        "something switched.",
+        {
+            "entity_ids": {"type": "array", "items": {"type": "string"}, "description": "Only these entities"},
+            "device_id": {"type": "string", "description": "Only this device (from list_devices)"},
+            "hours": {"type": "number", "description": "How far back, hours (24; up to 720 filtered, else 72)"},
+            "limit": {"type": "number", "description": "At most this many entries, the newest (200, up to 2000)"},
+        },
+        (),
+        "read",
+        get_logbook,
+    ),
+    Tool(
+        "list_devices",
+        "List devices",
+        "Devices with manufacturer, model, firmware, area, integration, the device they connect through, and "
+        "their unavailable entities.",
+        {
+            "query": {"type": "string", "description": "Name or model contains this"},
+            "area": {"type": "string", "description": "Area name contains this"},
+            "domain": {"type": "string", "description": 'Only of this integration, e.g. "zha"'},
+            "unavailable_only": {"type": "boolean", "description": "Only devices with unavailable entities"},
+            "limit": {"type": "number", "description": "At most this many (200, up to 2000)"},
+        },
+        (),
+        "read",
+        list_devices,
+    ),
+    Tool(
         "call_service",
         "Call a service (action)",
         "Calls a service of Home Assistant, e.g. light.turn_on, automation.reload or script.turn_on, and waits "
@@ -807,6 +1184,17 @@ TOOLS: list[Tool] = [
 BY_NAME = {t.name: t for t in TOOLS}
 
 
+def _json_default(value: Any) -> Any:
+    """States, contexts, times and sets in results (traces, logbook, diagnostics)."""
+    if hasattr(value, "as_dict"):
+        return value.as_dict()
+    if isinstance(value, (set, frozenset)):
+        return sorted(value, key=str)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def allowed(tool: Tool, rights: dict[str, bool]) -> bool:
     return bool(rights.get("read")) and bool(rights.get(tool.right))
 
@@ -829,7 +1217,7 @@ async def call_tool(hass: HomeAssistant, name: str, args: dict[str, Any], rights
         return {"text": str(err), "isError": True}
     except Exception as err:  # noqa: BLE001 - the AI gets the error, Home Assistant goes on
         return {"text": f"{type(err).__name__}: {err}", "isError": True}
-    text = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str, indent=1)
+    text = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=_json_default, indent=1)
     if len(text) > MAX_TEXT:
         return {"text": text[:MAX_TEXT], "isError": False, "truncated": True}
     return {"text": text, "isError": False}

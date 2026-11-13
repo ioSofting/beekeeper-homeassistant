@@ -32,7 +32,7 @@
                     "ai_users": "Gerir utilizadores"
                 },
                 "data_description": {
-                    "ai_read": "Resumo, entidades, estados, histórico, registo, integrações e automatizações.",
+                    "ai_read": "Resumo, entidades, dispositivos, estados, histórico, diário, registo, integrações com diagnóstico, estado do sistema, reparações, automatizações e os seus rastreios.",
                     "ai_write": "Chamar serviços (comutar dispositivos, executar scripts), recarregar integrações, reiniciar o Home Assistant.",
                     "ai_users": "Listar, ativar e desativar utilizadores; o portal pode criar um acesso para o suporte e guarda a sua palavra-passe. Nunca o proprietário."
                 }

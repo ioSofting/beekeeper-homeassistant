@@ -32,7 +32,7 @@
                     "ai_users": "Manage users"
                 },
                 "data_description": {
-                    "ai_read": "Overview, entities, states, history, log, integrations and automations.",
+                    "ai_read": "Overview, entities, devices, states, history, logbook, log, integrations with diagnostics, system health, repairs, automations and their traces.",
                     "ai_write": "Call services (switch devices, run scripts), reload integrations, restart Home Assistant.",
                     "ai_users": "List, enable and disable users; the portal can create a login for the support and keeps its password. Never the owner."
                 }

@@ -32,7 +32,7 @@
                     "ai_users": "Zarządzaj użytkownikami"
                 },
                 "data_description": {
-                    "ai_read": "Przegląd, encje, stany, historia, log, integracje i automatyzacje.",
+                    "ai_read": "Przegląd, encje, urządzenia, stany, historia, dziennik zdarzeń, log, integracje z diagnostyką, stan systemu, naprawy, automatyzacje i ich ślady.",
                     "ai_write": "Wywoływanie usług (przełączanie urządzeń, uruchamianie skryptów), przeładowanie integracji, restart Home Assistant.",
                     "ai_users": "Wyświetlanie, włączanie i wyłączanie użytkowników; portal może utworzyć konto dla wsparcia i przechowuje jego hasło. Nigdy właściciela."
                 }

@@ -61,7 +61,7 @@ Ohne Integration funktioniert der Agent auch; dann fehlen nur die Anzeige in Hom
 
 | Schalter | Werkzeuge |
 |---|---|
-| KI-Zugang (lesen) | Übersicht (Version, Entitäten je Domäne, nicht verfügbare Entitäten, Integrationen mit Fehlern, Reparaturen, Updates), Entitäten, Zustände, Verlauf, Log von Home Assistant, Integrationen, Automationen und ihre Konfiguration |
+| KI-Zugang (lesen) | Übersicht (Version, Entitäten je Domäne, nicht verfügbare Entitäten, Integrationen mit Fehlern, Reparaturen, Updates), Entitäten, Geräte (Hersteller, Modell, Firmware, Bereich, nicht verfügbare Entitäten), Zustände, Verlauf, Logbuch (was hat wer oder welche Automation geschaltet), Log von Home Assistant, Integrationen und ihre Diagnose (wie für Fehlerberichte, von der Integration geschwärzt), Systemzustand, Reparaturen mit Text, Automationen, ihre Konfiguration und ihre Traces (welcher Auslöser, welche Bedingung, welcher Schritt) |
 | Ändern erlauben | Dienste aufrufen, Integrationen neu laden, Home Assistant neu starten (nach Prüfung der Konfiguration) |
 | Benutzer verwalten | Benutzer auflisten, aktivieren und deaktivieren, das Beekeeper-Icon als Bild setzen; das Portal kann eine Anmeldung für den Support anlegen (`device_create_ha_login`): es erzeugt das Passwort selbst und legt es in den Zugangsdaten der Anlage ab, die KI sieht es nie. Der Besitzer wird nie geändert. |
 
