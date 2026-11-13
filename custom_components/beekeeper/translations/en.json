@@ -33,7 +33,7 @@
                 },
                 "data_description": {
                     "ai_read": "Overview, entities, devices, states, history, logbook, log, integrations with diagnostics, system health, repairs, automations and their traces.",
-                    "ai_write": "Call services (switch devices, run scripts), reload integrations, restart Home Assistant.",
+                    "ai_write": "Call services (switch devices, run scripts), reload integrations, restart Home Assistant, change options of integrations, create backups, install updates (also needs the consent of an admin in the portal).",
                     "ai_users": "List, enable and disable users; the portal can create a login for the support and keeps its password. Never the owner."
                 }
             }

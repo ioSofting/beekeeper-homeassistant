@@ -33,7 +33,7 @@
                 },
                 "data_description": {
                     "ai_read": "Panoramica, entità, dispositivi, stati, cronologia, registro eventi, log, integrazioni con diagnostica, salute del sistema, riparazioni, automazioni e le loro tracce.",
-                    "ai_write": "Chiamare servizi (commutare dispositivi, avviare script), ricaricare integrazioni, riavviare Home Assistant.",
+                    "ai_write": "Chiamare servizi (commutare dispositivi, avviare script), ricaricare integrazioni, riavviare Home Assistant, modificare le opzioni delle integrazioni, creare backup, installare aggiornamenti (serve anche il consenso di un amministratore nel portale).",
                     "ai_users": "Elencare, attivare e disattivare utenti; il portale può creare un accesso per il supporto e ne custodisce la password. Mai il proprietario."
                 }
             }

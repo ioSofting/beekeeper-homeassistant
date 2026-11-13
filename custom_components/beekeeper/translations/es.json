@@ -33,7 +33,7 @@
                 },
                 "data_description": {
                     "ai_read": "Resumen, entidades, dispositivos, estados, historial, libro de registro, registro, integraciones con diagnóstico, estado del sistema, reparaciones, automatizaciones y sus trazas.",
-                    "ai_write": "Llamar a servicios (conmutar dispositivos, ejecutar scripts), recargar integraciones, reiniciar Home Assistant.",
+                    "ai_write": "Llamar a servicios (conmutar dispositivos, ejecutar scripts), recargar integraciones, reiniciar Home Assistant, cambiar opciones de integraciones, crear copias de seguridad, instalar actualizaciones (requiere además el permiso de un administrador en el portal).",
                     "ai_users": "Listar, activar y desactivar usuarios; el portal puede crear un acceso para el soporte y guarda su contraseña. Nunca el propietario."
                 }
             }

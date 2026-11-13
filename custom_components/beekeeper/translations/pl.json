@@ -33,7 +33,7 @@
                 },
                 "data_description": {
                     "ai_read": "Przegląd, encje, urządzenia, stany, historia, dziennik zdarzeń, log, integracje z diagnostyką, stan systemu, naprawy, automatyzacje i ich ślady.",
-                    "ai_write": "Wywoływanie usług (przełączanie urządzeń, uruchamianie skryptów), przeładowanie integracji, restart Home Assistant.",
+                    "ai_write": "Wywoływanie usług (przełączanie urządzeń, uruchamianie skryptów), przeładowanie integracji, restart Home Assistant, zmiana opcji integracji, tworzenie kopii zapasowych, instalowanie aktualizacji (wymaga też zgody administratora w portalu).",
                     "ai_users": "Wyświetlanie, włączanie i wyłączanie użytkowników; portal może utworzyć konto dla wsparcia i przechowuje jego hasło. Nigdy właściciela."
                 }
             }

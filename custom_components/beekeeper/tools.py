@@ -3,14 +3,16 @@
 An AI of the integrator reaches them only during an AI session that a person opened in the portal, for a purpose and
 a time; every call is in the audit log of the portal. What they may do decides the owner in the options of this
 integration: read (overview, entities, states, history, log, integrations, automations and their traces,
-diagnostics, system health, repairs, logbook, devices), write (call services, reload integrations, restart) and
-users (list, create, enable and disable users). All of it is off by default.
+diagnostics, system health, repairs, logbook, devices, updates, backups), write (call services, reload integrations,
+restart, options of integrations, backups, updates) and users (list, create, enable and disable users). All of it is
+off by default. install_update needs in the portal also that an admin allowed updates by the AI for the asset.
 create_user is called only by the portal: it makes the password and keeps it in its access data.
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import io
 import json
 import os
@@ -40,6 +42,13 @@ LOG_ENTRY = re.compile(r"^\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,49}$")
 CONFIG_ENTRY_PROBLEMS = {"setup_error", "migration_error", "setup_retry", "failed_unload"}
+# this integration: its options are the consent of the owner, the AI does not change them
+OWN_DOMAIN = "beekeeper"
+# UpdateEntityFeature
+UPDATE_INSTALL, UPDATE_SPECIFIC_VERSION, UPDATE_PROGRESS, UPDATE_BACKUP, UPDATE_RELEASE_NOTES = 1, 2, 4, 8, 16
+# how long install_update and create_backup wait (s); the agent waits 105 s for an answer
+UPDATE_WAIT = 60
+BACKUP_WAIT = 60
 # the icon of Beekeeper, as picture of a user (e.g. the login of the support)
 ICON = os.path.join(os.path.dirname(__file__), "brand", "icon@2x.png")
 
@@ -707,7 +716,368 @@ async def list_devices(hass: HomeAssistant, args: dict[str, Any]) -> Any:
     return {"matched": matched, "devices": rows}
 
 
+async def list_updates(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    notes_of = _str(args, "release_notes").lower()
+    if notes_of:
+        st = hass.states.get(notes_of)
+        if st is None or st.domain != "update":
+            raise ToolError(f"No update entity {notes_of} (see list_updates)")
+        if not (st.attributes.get("supported_features") or 0) & UPDATE_RELEASE_NOTES:
+            return {"entity_id": notes_of, "release_notes": None, "release_url": st.attributes.get("release_url")}
+        component = hass.data.get("update")
+        entity = component.get_entity(notes_of) if component is not None else None
+        if entity is None:
+            raise ToolError(f"No update entity {notes_of}")
+        notes = await entity.async_release_notes()
+        return {"entity_id": notes_of, "release_notes": (notes or "")[:20000], "release_url": st.attributes.get("release_url")}
+    every = _bool(args, "all", False)
+    ent_reg = er.async_get(hass)
+    out = []
+    for st in sorted(hass.states.async_all("update"), key=lambda s: s.entity_id):
+        if not every and st.state != "on" and not st.attributes.get("in_progress"):
+            continue
+        a = st.attributes
+        features = a.get("supported_features") or 0
+        entry = ent_reg.async_get(st.entity_id)
+        row = {
+            "entity_id": st.entity_id,
+            "title": a.get("title") or st.name,
+            "available": st.state == "on",
+            "installed": a.get("installed_version"),
+            "latest": a.get("latest_version"),
+            "skipped": a.get("skipped_version"),
+            "in_progress": a.get("in_progress") or None,
+            "percentage": a.get("update_percentage"),
+            "summary": a.get("release_summary"),
+            "release_url": a.get("release_url"),
+            "auto_update": a.get("auto_update") or None,
+            "platform": entry.platform if entry else None,
+            "can": [
+                name
+                for bit, name in (
+                    (UPDATE_INSTALL, "install"),
+                    (UPDATE_SPECIFIC_VERSION, "version"),
+                    (UPDATE_BACKUP, "backup"),
+                    (UPDATE_RELEASE_NOTES, "release_notes"),
+                )
+                if features & bit
+            ],
+        }
+        out.append({k: v for k, v in row.items() if v not in (None, [], "")})
+    return out
+
+
+def _backup_manager(hass: HomeAssistant) -> Any:
+    manager = hass.data.get("backup")
+    if manager is None or not hasattr(manager, "async_get_backups"):
+        raise ToolError("The integration backup of Home Assistant is not loaded")
+    return manager
+
+
+async def list_backups(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    manager = _backup_manager(hass)
+    limit = _int(args, "limit", 20, 1, 200)
+    backups, errors = await manager.async_get_backups()
+    rows = []
+    for b in sorted(backups.values(), key=lambda b: b.date, reverse=True)[:limit]:
+        row = {
+            "backup_id": b.backup_id,
+            "name": b.name,
+            "date": b.date,
+            "homeassistant": b.homeassistant_version if b.homeassistant_included else None,
+            "database": b.database_included,
+            "addons": [getattr(x, "slug", None) or getattr(x, "name", str(x)) for x in b.addons],
+            "folders": [str(getattr(f, "value", f)) for f in b.folders],
+            "agents": {k: {"size": v.size, "protected": v.protected} for k, v in b.agents.items()},
+            "automatic": getattr(b, "with_automatic_settings", None),
+            "failed_agents": list(getattr(b, "failed_agent_ids", None) or []),
+        }
+        rows.append({k: v for k, v in row.items() if v not in (None, [], "")})
+    config = getattr(manager, "config", None)
+    data = getattr(config, "data", None)
+    create = getattr(data, "create_backup", None)
+    schedule = getattr(data, "schedule", None)
+    return {
+        "state": str(getattr(manager.state, "value", manager.state)),
+        "count": len(backups),
+        "backups": rows,
+        "automatic": {
+            "agents": list(getattr(create, "agent_ids", None) or []),
+            "encrypted": bool(getattr(create, "password", None)),
+            "recurrence": str(getattr(getattr(schedule, "recurrence", None), "value", None) or "") or None,
+            "last_completed": _iso(getattr(data, "last_completed_automatic_backup", None)),
+        },
+        **({"agent_errors": {k: str(v) for k, v in errors.items()}} if errors else {}),
+    }
+
+
 # ---------------------------------------------------------------------------------------------- write
+
+
+async def _service(
+    hass: HomeAssistant,
+    domain: str,
+    service: str,
+    data: dict[str, Any],
+    target: dict[str, Any] | None = None,
+    return_response: bool = False,
+    wait: float = SERVICE_TIMEOUT,
+) -> tuple[bool, Any]:
+    """Calls a service and waits for it up to wait seconds; (finished, response). It is not cancelled after that."""
+    task = hass.async_create_task(
+        hass.services.async_call(
+            domain,
+            service,
+            data,
+            blocking=True,
+            target=target,
+            context=Context(),
+            return_response=return_response,
+        )
+    )
+    done, _ = await asyncio.wait({task}, timeout=wait)
+    if not done:
+        return False, None
+    return True, task.result()
+
+
+SECRET_KEY = re.compile(r"pass|secret|token|credential|(^|_)(pin|key|api_?key)($|_)", re.IGNORECASE)
+# options flows this tool started and not finished, per entry: a new start aborts the old one
+_OPTION_FLOWS: dict[str, str] = {}
+
+
+def _redact(value: Any) -> Any:
+    """Values of keys like password, token or api_key as ***: the AI does not see them."""
+    if isinstance(value, dict):
+        return {
+            k: "***" if isinstance(k, str) and SECRET_KEY.search(k) and v not in (None, "") else _redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact(v) for v in value]
+    return value
+
+
+def _secret_field(field: dict[str, Any]) -> bool:
+    text = (field.get("selector") or {}).get("text") if isinstance(field.get("selector"), dict) else None
+    return bool(SECRET_KEY.search(str(field.get("name", "")))) or (
+        isinstance(text, dict) and text.get("type") == "password"
+    )
+
+
+async def _describe_flow(hass: HomeAssistant, entry: Any, result: dict[str, Any]) -> dict[str, Any]:
+    """A step of an options flow for the AI: its fields with labels, the menu, or how it ended."""
+    try:
+        from homeassistant.helpers.data_entry_flow import _BaseFlowManagerView
+
+        data = _BaseFlowManagerView._prepare_result_json(None, result)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001 - without the fields then
+        data = {k: v for k, v in result.items() if k not in ("data_schema", "data", "context")}
+    kind = str(getattr(data.get("type"), "value", data.get("type")))
+    out: dict[str, Any] = {"type": kind, "flow_id": data.get("flow_id"), "step_id": data.get("step_id")}
+    from homeassistant.helpers.translation import async_get_translations
+
+    texts = await async_get_translations(hass, "en", "options", [entry.domain])
+    prefix = f"component.{entry.domain}.options.step.{data.get('step_id')}."
+    placeholders = data.get("description_placeholders")
+    if kind == "form":
+        fields = []
+        for field in data.get("data_schema") or []:
+            field = dict(field)
+            name = field.get("name")
+            if _secret_field(field):
+                field.pop("default", None)
+                description = field.get("description")
+                if isinstance(description, dict) and description.get("suggested_value") not in (None, ""):
+                    field["description"] = {**description, "suggested_value": "***"}
+            label = texts.get(f"{prefix}data.{name}")
+            help_text = texts.get(f"{prefix}data_description.{name}")
+            fields.append({**field, **({"label": label} if label else {}), **({"help": help_text} if help_text else {})})
+        out.update(
+            {
+                "title": _fill(texts.get(prefix + "title"), placeholders),
+                "description": _fill(texts.get(prefix + "description"), placeholders),
+                "fields": fields,
+                "errors": data.get("errors") or None,
+                "last_step": data.get("last_step"),
+            }
+        )
+    elif kind == "menu":
+        options = data.get("menu_options") or []
+        names = options if isinstance(options, list) else list(options)
+        out["menu"] = {n: texts.get(f"{prefix}menu_options.{n}") or n for n in names}
+        out["title"] = _fill(texts.get(prefix + "title"), placeholders)
+    elif kind == "abort":
+        reason = data.get("reason")
+        out["reason"] = _fill(texts.get(f"component.{entry.domain}.options.abort.{reason}"), placeholders) or reason
+    elif kind == "create_entry":
+        out["done"] = True
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _abort_flow(hass: HomeAssistant, flow_id: str) -> None:
+    try:
+        hass.config_entries.options.async_abort(flow_id)
+    except Exception:  # noqa: BLE001 - it is gone already
+        pass
+
+
+async def _start_options(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
+    if not entry.supports_options:
+        raise ToolError(f"{entry.title} ({entry.domain}) has no options")
+    old = _OPTION_FLOWS.pop(entry.entry_id, None)
+    if old:
+        _abort_flow(hass, old)
+    result = await hass.config_entries.options.async_init(
+        entry.entry_id, context={"source": "user", "show_advanced_options": True}
+    )
+    if result.get("flow_id") and str(getattr(result["type"], "value", result["type"])) in ("form", "menu"):
+        _OPTION_FLOWS[entry.entry_id] = result["flow_id"]
+    return result
+
+
+async def get_integration_options(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    entry = _find_entry(hass, args)
+    result = await _start_options(hass, entry)
+    step = await _describe_flow(hass, entry, result)
+    # only a look: the dialog is not left open
+    if _OPTION_FLOWS.pop(entry.entry_id, None):
+        _abort_flow(hass, result["flow_id"])
+    step.pop("flow_id", None)
+    return {
+        "entry_id": entry.entry_id,
+        "domain": entry.domain,
+        "title": entry.title,
+        "options": _redact(dict(entry.options)),
+        "first_step": step,
+    }
+
+
+async def set_integration_options(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    from homeassistant.data_entry_flow import InvalidData, UnknownFlow
+
+    entry = _find_entry(hass, args)
+    if entry.domain == OWN_DOMAIN:
+        raise ToolError("The options of Beekeeper decide what the AI may do here: only the owner changes them")
+    flows = hass.config_entries.options
+    flow_id = _str(args, "flow_id")
+    user_input = _dict(args, "input")
+    next_step = _str(args, "next_step")
+    if _bool(args, "abort", False):
+        if flow_id:
+            _abort_flow(hass, flow_id)
+        _OPTION_FLOWS.pop(entry.entry_id, None)
+        return {"aborted": True}
+    if flow_id:
+        if _OPTION_FLOWS.get(entry.entry_id) != flow_id:
+            raise ToolError("No open options dialog with this flow_id for this entry: leave flow_id out to start again")
+    else:
+        result = await _start_options(hass, entry)
+        if result.get("flow_id") is None or result["flow_id"] != _OPTION_FLOWS.get(entry.entry_id):
+            return await _describe_flow(hass, entry, result)
+        flow_id = result["flow_id"]
+        kind = str(getattr(result["type"], "value", result["type"]))
+        if (kind == "form" and user_input is None) or (kind == "menu" and not next_step):
+            return await _describe_flow(hass, entry, result)
+    before = dict(entry.options)
+    try:
+        result = await flows.async_configure(flow_id, {"next_step_id": next_step} if next_step else (user_input or {}))
+    except UnknownFlow as err:
+        _OPTION_FLOWS.pop(entry.entry_id, None)
+        raise ToolError("The options dialog is gone: start again without flow_id") from err
+    except InvalidData as err:
+        raise ToolError(f"Invalid input: {getattr(err, 'schema_errors', None) or err}") from err
+    except Exception as err:
+        if type(err).__name__ in ("Invalid", "MultipleInvalid"):
+            raise ToolError(f"Invalid input: {err}") from err
+        raise
+    step = await _describe_flow(hass, entry, result)
+    if step["type"] in ("form", "menu"):
+        return step
+    _OPTION_FLOWS.pop(entry.entry_id, None)
+    if step["type"] == "create_entry":
+        after = dict(entry.options)
+        changed = sorted(k for k in {*before, *after} if before.get(k) != after.get(k))
+        return {"done": True, "changed": changed, "options": _redact(after)}
+    return step
+
+
+async def create_backup(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    manager = _backup_manager(hass)
+    create = manager.config.data.create_backup
+    agents = list(create.agent_ids) or [a for a in manager.backup_agents if a.endswith(".local")]
+    if not agents:
+        raise ToolError("No place for backups is set up (Settings, System, Backups)")
+    name = _str(args, "name", max_len=100) or f"Beekeeper {dt_util.now().strftime('%Y-%m-%d %H:%M')}"
+    try:
+        new = await manager.async_initiate_backup(
+            agent_ids=agents,
+            include_addons=create.include_addons,
+            include_all_addons=create.include_all_addons,
+            include_database=_bool(args, "include_database", create.include_database),
+            include_folders=create.include_folders,
+            include_homeassistant=True,
+            name=name,
+            # encrypted as the automatic backups, with their key
+            password=create.password,
+        )
+    except Exception as err:  # noqa: BLE001 - e.g. a backup is running already
+        raise ToolError(f"No backup: {err}") from err
+    for _ in range(BACKUP_WAIT):
+        if str(getattr(manager.state, "value", manager.state)) != "create_backup":
+            break
+        await asyncio.sleep(1)
+    running = str(getattr(manager.state, "value", manager.state)) == "create_backup"
+    event = getattr(manager, "last_action_event", None)
+    return {
+        "backup_job_id": getattr(new, "backup_job_id", None),
+        "name": name,
+        "agents": agents,
+        "encrypted": bool(create.password),
+        "finished": not running,
+        "last_event": event,
+        **({"note": "Still running: see list_backups"} if running else {}),
+    }
+
+
+async def install_update(hass: HomeAssistant, args: dict[str, Any]) -> Any:
+    entity_id = _str(args, "entity_id", required=True).lower()
+    version = _str(args, "version")
+    st = hass.states.get(entity_id)
+    if st is None or st.domain != "update":
+        raise ToolError(f"No update entity {entity_id} (see list_updates)")
+    features = st.attributes.get("supported_features") or 0
+    if not features & UPDATE_INSTALL:
+        raise ToolError(f"{st.name} cannot be installed from Home Assistant")
+    if st.attributes.get("in_progress"):
+        raise ToolError(f"{st.name} is being installed already")
+    if st.state != "on" and not version:
+        raise ToolError(f"{st.name} is up to date ({st.attributes.get('installed_version')})")
+    data: dict[str, Any] = {"entity_id": entity_id}
+    if version:
+        if not features & UPDATE_SPECIFIC_VERSION:
+            raise ToolError(f"{st.name} installs only the latest version")
+        data["version"] = version
+    notes = []
+    if _bool(args, "backup", True):
+        if features & UPDATE_BACKUP:
+            data["backup"] = True
+        else:
+            notes.append("This update makes no backup itself (for an integration: create_backup before)")
+    entry = er.async_get(hass).async_get(entity_id)
+    before = st.attributes.get("installed_version")
+    try:
+        finished, _ = await _service(hass, "update", "install", data, wait=UPDATE_WAIT)
+    except Exception as err:  # noqa: BLE001 - the AI gets why
+        raise ToolError(f"The update failed: {err}") from err
+    now = hass.states.get(entity_id)
+    after = now.attributes.get("installed_version") if now else None
+    if entry is not None and entry.platform == "hacs" and finished:
+        notes.append("Home Assistant loads it after a restart (restart_home_assistant)")
+    if not finished:
+        notes.append(f"Still installing after {UPDATE_WAIT} s: see list_updates (in_progress)")
+    return {"entity_id": entity_id, "finished": finished, "before": before, "installed": after, "notes": notes}
+
 
 
 async def call_service(hass: HomeAssistant, args: dict[str, Any]) -> Any:
@@ -722,19 +1092,9 @@ async def call_service(hass: HomeAssistant, args: dict[str, Any]) -> Any:
     from homeassistant.core import SupportsResponse
 
     wants_response = hass.services.supports_response(domain, service) != SupportsResponse.NONE
-    try:
-        async with asyncio.timeout(SERVICE_TIMEOUT):
-            response = await hass.services.async_call(
-                domain,
-                service,
-                data,
-                blocking=True,
-                target=target,
-                context=Context(),
-                return_response=wants_response,
-            )
-    except TimeoutError as err:
-        raise ToolError(f"{domain}.{service} did not finish within {SERVICE_TIMEOUT} s; it may still run") from err
+    finished, response = await _service(hass, domain, service, data, target, wants_response)
+    if not finished:
+        return {"ok": True, "note": f"{domain}.{service} still runs after {SERVICE_TIMEOUT} s"}
     return {"ok": True, **({"response": response} if wants_response else {})}
 
 
@@ -1089,6 +1449,29 @@ TOOLS: list[Tool] = [
         list_devices,
     ),
     Tool(
+        "list_updates",
+        "List updates",
+        "Available updates (update entities): Home Assistant, add-ons, integrations of HACS, firmware of "
+        "devices; what each can do (install, a version, a backup). With release_notes the notes of one.",
+        {
+            "all": {"type": "boolean", "description": "Also those that are up to date (false)"},
+            "release_notes": {"type": "string", "description": "Only the release notes of this update entity"},
+        },
+        (),
+        "read",
+        list_updates,
+    ),
+    Tool(
+        "list_backups",
+        "List backups",
+        "Backups of Home Assistant (newest first) with where they are, size, encrypted or not, and the "
+        "settings of the automatic backups.",
+        {"limit": {"type": "number", "description": "At most this many (20)"}},
+        (),
+        "read",
+        list_backups,
+    ),
+    Tool(
         "call_service",
         "Call a service (action)",
         "Calls a service of Home Assistant, e.g. light.turn_on, automation.reload or script.turn_on, and waits "
@@ -1127,6 +1510,70 @@ TOOLS: list[Tool] = [
         (),
         "write",
         restart_home_assistant,
+        destructive=True,
+    ),
+    Tool(
+        "get_integration_options",
+        "Options of an integration",
+        "The current options of an integration entry and the first step of its options dialog (Configure): "
+        "the fields with labels, defaults and what they accept, or a menu. Passwords and keys show as ***.",
+        {
+            "entry_id": {"type": "string", "description": "From list_integrations"},
+            "domain": {"type": "string", "description": "Or the integration, if it has one entry"},
+        },
+        (),
+        "write",
+        get_integration_options,
+        reads=True,
+    ),
+    Tool(
+        "set_integration_options",
+        "Change the options of an integration",
+        "Goes through the options dialog of an integration entry as the owner would with Configure. Without "
+        "flow_id it starts it (and, with input or next_step, fills the first step); then each answer gives the "
+        "next step with its flow_id, until done (the options are saved, the integration reloads) or aborted. "
+        "Fields left out keep their defaults. Say what you change before.",
+        {
+            "entry_id": {"type": "string", "description": "From list_integrations"},
+            "domain": {"type": "string", "description": "Or the integration, if it has one entry"},
+            "flow_id": {"type": "string", "description": "Of the open dialog, from the previous answer"},
+            "input": {"type": "object", "description": "Values of the fields of the current step"},
+            "next_step": {"type": "string", "description": "In a menu: the step to go to"},
+            "abort": {"type": "boolean", "description": "Close the dialog without saving"},
+        },
+        (),
+        "write",
+        set_integration_options,
+        destructive=True,
+    ),
+    Tool(
+        "create_backup",
+        "Create a backup",
+        "Creates a backup of Home Assistant where and as the automatic backups are kept (encrypted with their "
+        "key), e.g. before an update. Waits up to a minute; list_backups shows it.",
+        {
+            "name": {"type": "string", "description": 'e.g. "Before the update of HACS"'},
+            "include_database": {"type": "boolean", "description": "With the database (as the automatic ones)"},
+        },
+        (),
+        "write",
+        create_backup,
+    ),
+    Tool(
+        "install_update",
+        "Install an update",
+        "Installs an update (see list_updates): an integration of HACS, the firmware of a device, an add-on or "
+        "Home Assistant (with the Supervisor). Home Assistant and add-ons make a backup before if backup is "
+        "true; for an integration make one with create_backup before and restart afterwards. Waits up to a "
+        "minute. Tell the user before.",
+        {
+            "entity_id": {"type": "string", "description": 'Update entity, e.g. "update.hacs_update"'},
+            "version": {"type": "string", "description": "This version instead of the latest, if it can"},
+            "backup": {"type": "boolean", "description": "Backup before, where the update can (true)"},
+        },
+        ("entity_id",),
+        "write",
+        install_update,
         destructive=True,
     ),
     Tool(
@@ -1198,6 +1645,8 @@ def _json_default(value: Any) -> Any:
         return sorted(value, key=str)
     if hasattr(value, "isoformat"):
         return value.isoformat()
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return dataclasses.asdict(value)
     return str(value)
 
 

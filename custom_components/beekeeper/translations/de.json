@@ -33,7 +33,7 @@
                 },
                 "data_description": {
                     "ai_read": "Übersicht, Entitäten, Geräte, Zustände, Verlauf, Logbuch, Log, Integrationen mit Diagnose, Systemzustand, Reparaturen, Automationen und ihre Traces.",
-                    "ai_write": "Dienste aufrufen (Geräte schalten, Skripte starten), Integrationen neu laden, Home Assistant neu starten.",
+                    "ai_write": "Dienste aufrufen (Geräte schalten, Skripte starten), Integrationen neu laden, Home Assistant neu starten, Optionen von Integrationen ändern, Backups anlegen, Updates installieren (braucht zusätzlich die Erlaubnis eines admins im Portal).",
                     "ai_users": "Benutzer auflisten, aktivieren und deaktivieren; das Portal kann eine Anmeldung für den Support anlegen und verwahrt ihr Passwort. Nie der Besitzer."
                 }
             }

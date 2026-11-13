@@ -33,7 +33,7 @@
                 },
                 "data_description": {
                     "ai_read": "Aperçu, entités, appareils, états, historique, journal de bord, journal, intégrations avec diagnostics, santé du système, réparations, automatisations et leurs traces.",
-                    "ai_write": "Appeler des services (commuter des appareils, lancer des scripts), recharger des intégrations, redémarrer Home Assistant.",
+                    "ai_write": "Appeler des services (commuter des appareils, lancer des scripts), recharger des intégrations, redémarrer Home Assistant, modifier les options des intégrations, créer des sauvegardes, installer des mises à jour (nécessite aussi l'accord d'un administrateur dans le portail).",
                     "ai_users": "Lister, activer et désactiver des utilisateurs ; le portail peut créer un compte pour le support et en garde le mot de passe. Jamais le propriétaire."
                 }
             }
