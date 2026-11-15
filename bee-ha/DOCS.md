@@ -26,6 +26,18 @@ Nach der Anmeldung liegt das Gerätezertifikat in den Daten des Add-ons. Das Tok
 | Adresse von Home Assistant | nur wenn Home Assistant nicht unter `http://homeassistant:8123` antwortet, etwa `https://homeassistant:8123` mit eigenem Zertifikat (wird nicht geprüft) |
 | Debug | mehr Meldungen im Log |
 
+## Konsole
+
+Mit der Option *Konsole erlauben* (ab Werk aus) öffnet das Portal eine Shell in diesem Add-on, als Terminal im Browser: für Personen mit dem Recht `console`, mit Zweck und Dauer, im Audit-Log, und hier als Benachrichtigung zu sehen, solange sie läuft. Kein SSH-Add-on und kein offener Port nötig.
+
+In der Shell (als `root` im Container des Add-ons):
+
+- `/homeassistant`: die Konfiguration von Home Assistant (dort startet die Shell), dazu `/share`, `/ssl`, `/media`, `/addon_configs` und `/backup` (nur lesen)
+- `ha`: die CLI von Home Assistant, z. B. `ha core logs`, `ha core check`, `ha core update`, `ha addons`, `ha backups new`, `ha host logs` (nicht auf armv7)
+- `bash`, `nano`, `less`, `curl`, `jq`
+
+Dafür hat das Add-on beim Supervisor die Rolle `manager` und die Ordner eingebunden; Home Assistant zeigt deshalb eine niedrigere Sicherheitsbewertung. Der Host selbst ist nicht erreichbar.
+
 ## KI-Zugang
 
 Mit der Integration Beekeeper ab 0.2.0 kann eine KI im Portal mit Werkzeugen in Home Assistant arbeiten, solange jemand dort einen KI-Zugang geöffnet hat. Was sie darf (lesen, ändern, Benutzer verwalten), legt der Besitzer in den Optionen der Integration fest; ab Werk ist alles aus. Das Add-on reicht die Anfragen nur weiter.

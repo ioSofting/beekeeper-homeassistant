@@ -50,10 +50,15 @@ Einstellungen des Containers:
 | `HA_CONFIG` | `/config` | Konfigurationsordner von Home Assistant, nur lesend: Version aus `.HA_VERSION`; mit der Integration nicht nötig |
 | `BEE_COMMENT` | | Freitext im Portal |
 | `BEE_REMOTE_ACCESS` | an | `false`: kein Fernzugriff |
+| `BEE_CONSOLE` | aus | `true`: die Konsole über das Portal erlauben, eine Shell in diesem Container (startet in `/config`; dafür schreibbar einbinden). Den Docker-Socket nur bewusst einbinden: das ist root auf dem Host |
 | `BEE_LOCAL_PORT` | `8099` | lokale API für die Integration; nicht veröffentlichen |
 | `BEE_DEBUG` | aus | mehr Meldungen im Log |
 
 Ohne Integration funktioniert der Agent auch; dann fehlen nur die Anzeige in Home Assistant und die Taste zum Beenden.
+
+## Konsole
+
+Erlaubt der Besitzer die Konsole (Add-on: Option *Konsole erlauben*, Container: `BEE_CONSOLE=true`; ab Werk aus), öffnet das Portal eine Shell im Agenten als Terminal im Browser: Knopf *Konsole* an der Anlage, für Personen mit dem Recht `console`, mit Zweck und Dauer im Audit-Log, in Home Assistant als Benachrichtigung zu sehen und dort zu beenden. Kein SSH-Add-on, kein offener Port. Als Add-on enthält sie die Konfiguration von Home Assistant (`/homeassistant`), `/share`, `/ssl`, `/media`, `/addon_configs`, `/backup` (nur lesen) und die CLI `ha` (amd64, aarch64); dafür hat das Add-on die Rolle `manager` beim Supervisor. Die KI bekommt keine Konsole.
 
 ## KI-Zugang
 

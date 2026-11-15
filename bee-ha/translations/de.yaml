@@ -11,6 +11,9 @@ configuration:
   remote_access:
     name: Fernzugriff erlauben
     description: "Aus: das Portal kann keinen Fernzugriff auf dieses Home Assistant öffnen."
+  console:
+    name: Konsole erlauben
+    description: "Eine Shell in diesem Add-on über das Portal, für Personen mit dem Recht console, mit Zweck und Dauer im Audit-Log: die Konfiguration von Home Assistant und die CLI ha (Updates, Add-ons, Backups). Ab Werk aus."
   ha_url:
     name: Adresse von Home Assistant
     description: "Nur ändern, wenn Home Assistant nicht unter http://homeassistant:8123 antwortet (z. B. https mit eigenem Zertifikat)."

@@ -1,5 +1,5 @@
 name: Beekeeper
-version: "0.3.0"
+version: "0.4.0"
 slug: bee_ha
 description: Fernzugriff auf Home Assistant über beekeeper, ohne offene Ports und zeitlich begrenzt
 url: https://github.com/ioSofting/beekeeper-homeassistant
@@ -13,6 +13,22 @@ boot: auto
 # version and name of Home Assistant (core/api/config), Home Assistant OS or not (/info), discovery of the integration
 homeassistant_api: true
 hassio_api: true
+# the CLI ha in the console (updates, add-ons, backups); the console itself is off unless the owner switches it on
+hassio_role: manager
+# what the console reaches: the configuration of Home Assistant (/homeassistant) and the usual folders
+map:
+  - type: homeassistant_config
+    read_only: false
+  - type: addon_configs
+    read_only: false
+  - type: share
+    read_only: false
+  - type: ssl
+    read_only: false
+  - type: media
+    read_only: false
+  - type: backup
+    read_only: true
 discovery:
   - beekeeper
 options:
@@ -20,11 +36,13 @@ options:
   server: https://beekeeper.one
   comment: ""
   remote_access: true
+  console: false
   debug: false
 schema:
   token: password?
   server: url
   comment: str?
   remote_access: bool
+  console: bool
   ha_url: url?
   debug: bool

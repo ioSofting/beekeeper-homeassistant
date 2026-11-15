@@ -24094,13 +24094,13 @@ var require_build2 = __commonJS({
 });
 
 // bee-ha/src/main.ts
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 
 // bee-ha/src/agent.ts
 var import_node_crypto = require("node:crypto");
-var import_node_fs = require("node:fs");
+var import_node_fs2 = require("node:fs");
 var import_promises2 = require("node:fs/promises");
-var import_node_os = __toESM(require("node:os"), 1);
+var import_node_os2 = __toESM(require("node:os"), 1);
 var import_node_path2 = require("node:path");
 
 // src/protocol.ts
@@ -24118,6 +24118,416 @@ function normalizeComment(value) {
 }
 var MAX_MCP_RESULT = 512 * 1024;
 var MAX_LOG_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+// bee-ha/src/console.ts
+var import_node_child_process = require("node:child_process");
+var import_node_fs = require("node:fs");
+var import_node_os = __toESM(require("node:os"), 1);
+
+// src/tunnel.ts
+var import_node_stream = require("node:stream");
+var FRAME = { OPEN: 1, DATA: 2, END: 3, RESET: 4, ACK: 5 };
+var WINDOW = 256 * 1024;
+var MAX_PAYLOAD = 32 * 1024;
+var ACK_THRESHOLD = 64 * 1024;
+var REFUSE_HEADER = "x-bee-refused";
+var CLOSE = {
+  /** The session ended (operator, expiry, server stop): do not reconnect */
+  ENDED: 4e3,
+  /** The agent refuses: the owner does not allow this kind of access */
+  NOT_ALLOWED: 4003,
+  /** The agent finds no local web interface of this kind */
+  NO_TARGET: 4004,
+  /** Another connection of the same session took over */
+  REPLACED: 4009
+};
+var CONSOLE = { DATA: 1, RESIZE: 2, EXIT: 3 };
+var MAX_CONSOLE_MESSAGE = 1024 * 1024;
+function consoleMessage(type, payload = Buffer.alloc(0)) {
+  const buf = Buffer.allocUnsafe(5 + payload.length);
+  buf[0] = type;
+  buf.writeUInt32BE(payload.length, 1);
+  payload.copy(buf, 5);
+  return buf;
+}
+var ConsoleReader = class {
+  constructor(onMessage) {
+    this.onMessage = onMessage;
+  }
+  onMessage;
+  buf = Buffer.alloc(0);
+  /** @returns false if the stream is broken (message too large); then nothing more comes out */
+  push(chunk) {
+    this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk;
+    while (this.buf.length >= 5) {
+      const length = this.buf.readUInt32BE(1);
+      if (length > MAX_CONSOLE_MESSAGE) {
+        this.buf = Buffer.alloc(0);
+        return false;
+      }
+      if (this.buf.length < 5 + length) {
+        break;
+      }
+      const type = this.buf[0];
+      const payload = this.buf.subarray(5, 5 + length);
+      this.buf = this.buf.subarray(5 + length);
+      this.onMessage(type, payload);
+    }
+    return true;
+  }
+};
+function frame(type, id, payload) {
+  const buf = Buffer.allocUnsafe(5 + (payload?.length ?? 0));
+  buf[0] = type;
+  buf.writeUInt32BE(id, 1);
+  payload?.copy(buf, 5);
+  return buf;
+}
+var TunnelStream = class extends import_node_stream.Duplex {
+  constructor(mux, id) {
+    super({ allowHalfOpen: true });
+    this.mux = mux;
+    this.id = id;
+  }
+  mux;
+  id;
+  /** Bytes this side may still send */
+  credit = WINDOW;
+  /** Write waiting for credit */
+  pending = null;
+  /** Received bytes passed on but not yet acknowledged */
+  unacked = 0;
+  /** The reader did not take everything: acknowledge once it asks for more */
+  paused = false;
+  sentEnd = false;
+  gotEnd = false;
+  gotReset = false;
+  _write(chunk, _encoding, callback) {
+    this.send(chunk, callback);
+  }
+  send(chunk, callback) {
+    while (chunk.length) {
+      const n = Math.min(chunk.length, this.credit, MAX_PAYLOAD);
+      if (n <= 0) {
+        this.pending = { chunk, callback };
+        return;
+      }
+      this.mux.sendFrame(FRAME.DATA, this.id, chunk.subarray(0, n));
+      this.mux.bytesOut += n;
+      this.credit -= n;
+      chunk = chunk.subarray(n);
+    }
+    callback();
+  }
+  _final(callback) {
+    this.sentEnd = true;
+    this.mux.sendFrame(FRAME.END, this.id);
+    callback();
+  }
+  _read() {
+    if (this.paused) {
+      this.paused = false;
+      this.ack(true);
+    }
+  }
+  _destroy(err, callback) {
+    if (!this.gotReset && !(this.sentEnd && this.gotEnd)) {
+      this.mux.sendFrame(FRAME.RESET, this.id, Buffer.from(err?.message || "closed"));
+    }
+    this.mux.forget(this.id);
+    const pending = this.pending;
+    this.pending = null;
+    pending?.callback(err || new Error("stream closed"));
+    callback(err);
+  }
+  ack(force) {
+    if (this.paused || !this.unacked || this.destroyed || !force && this.unacked < ACK_THRESHOLD) {
+      return;
+    }
+    const payload = Buffer.allocUnsafe(4);
+    payload.writeUInt32BE(this.unacked, 0);
+    this.unacked = 0;
+    this.mux.sendFrame(FRAME.ACK, this.id, payload);
+  }
+  /** Frame from the other side, passed on by the Mux */
+  handle(type, payload) {
+    if (type === FRAME.DATA) {
+      if (this.gotEnd) {
+        return;
+      }
+      this.mux.bytesIn += payload.length;
+      this.unacked += payload.length;
+      if (this.push(payload)) {
+        this.ack(false);
+      } else {
+        this.paused = true;
+      }
+    } else if (type === FRAME.END) {
+      this.gotEnd = true;
+      this.push(null);
+    } else if (type === FRAME.ACK && payload.length >= 4) {
+      this.credit += payload.readUInt32BE(0);
+      const pending = this.pending;
+      if (pending) {
+        this.pending = null;
+        this.send(pending.chunk, pending.callback);
+      }
+    } else if (type === FRAME.RESET) {
+      this.gotReset = true;
+      this.destroy(new Error(payload.toString("utf8") || "reset by the other side"));
+    }
+  }
+};
+var Mux = class {
+  constructor(send2, onStream) {
+    this.send = send2;
+    this.onStream = onStream;
+  }
+  send;
+  onStream;
+  streams = /* @__PURE__ */ new Map();
+  nextId = 1;
+  closed = false;
+  /** Payload bytes received and sent, for the audit log */
+  bytesIn = 0;
+  bytesOut = 0;
+  get size() {
+    return this.streams.size;
+  }
+  get isClosed() {
+    return this.closed;
+  }
+  open() {
+    if (this.closed) {
+      throw new Error("tunnel closed");
+    }
+    const id = this.nextId;
+    this.nextId = this.nextId >= 4294967295 ? 1 : this.nextId + 1;
+    const stream = new TunnelStream(this, id);
+    this.streams.set(id, stream);
+    this.sendFrame(FRAME.OPEN, id);
+    return stream;
+  }
+  receive(buf) {
+    if (this.closed || buf.length < 5) {
+      return;
+    }
+    const type = buf[0];
+    const id = buf.readUInt32BE(1);
+    const payload = buf.subarray(5);
+    if (type === FRAME.OPEN) {
+      if (!this.onStream || this.streams.has(id)) {
+        this.sendFrame(FRAME.RESET, id, Buffer.from("refused"));
+        return;
+      }
+      const stream2 = new TunnelStream(this, id);
+      this.streams.set(id, stream2);
+      this.onStream(stream2);
+      return;
+    }
+    const stream = this.streams.get(id);
+    if (stream) {
+      stream.handle(type, payload);
+    } else if (type === FRAME.DATA) {
+      this.sendFrame(FRAME.RESET, id, Buffer.from("unknown stream"));
+    }
+  }
+  /** @internal */
+  sendFrame(type, id, payload) {
+    if (!this.closed) {
+      this.send(frame(type, id, payload));
+    }
+  }
+  /** @internal */
+  forget(id) {
+    this.streams.delete(id);
+  }
+  /** The WebSocket is gone: every stream ends with an error */
+  close(reason = "tunnel closed") {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    for (const stream of [...this.streams.values()]) {
+      stream.destroy(new Error(reason));
+    }
+    this.streams.clear();
+  }
+};
+
+// bee-ha/src/console.ts
+var MAX_SHELLS = 4;
+function findScript() {
+  if (process.platform !== "linux") {
+    return null;
+  }
+  return ["/usr/bin/script", "/bin/script"].find((p) => (0, import_node_fs.existsSync)(p)) ?? null;
+}
+function findStty() {
+  return ["/usr/bin/stty", "/bin/stty"].find((p) => (0, import_node_fs.existsSync)(p)) ?? "stty";
+}
+function loginShell(env = process.env) {
+  return [env.SHELL, "/bin/bash", "/bin/sh"].find((s) => !!s && !/(nologin|false)$/.test(s) && (0, import_node_fs.existsSync)(s)) ?? "/bin/sh";
+}
+function consoleUser() {
+  try {
+    return import_node_os.default.userInfo().username;
+  } catch {
+    return String(process.getuid?.() ?? "");
+  }
+}
+function parentOf(stat) {
+  const rest = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+  return parseInt(rest[1], 10);
+}
+function findTerminal(scriptPid) {
+  for (const entry of (0, import_node_fs.readdirSync)("/proc")) {
+    if (!/^\d+$/.test(entry)) {
+      continue;
+    }
+    try {
+      if (parentOf((0, import_node_fs.readFileSync)(`/proc/${entry}/stat`, "utf8")) === scriptPid) {
+        const tty = (0, import_node_fs.readlinkSync)(`/proc/${entry}/fd/0`);
+        if (tty.startsWith("/dev/pts/")) {
+          return { pid: parseInt(entry, 10), tty };
+        }
+      }
+    } catch {
+    }
+  }
+  return null;
+}
+function signalGroup(pid, signal) {
+  if (!pid) {
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+  }
+}
+function startShell(stream, opts) {
+  const script = findScript();
+  if (!script) {
+    stream.end(consoleMessage(CONSOLE.EXIT, Buffer.from("keine Konsole auf diesem System")));
+    return;
+  }
+  const shell = loginShell();
+  const home = (() => {
+    try {
+      return import_node_os.default.userInfo().homedir;
+    } catch {
+      return opts.cwd;
+    }
+  })();
+  const env = {
+    HOME: home,
+    USER: consoleUser(),
+    LOGNAME: consoleUser(),
+    SHELL: shell,
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    LANG: process.env.LANG || "C.UTF-8",
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    ...opts.env
+  };
+  const child = (0, import_node_child_process.spawn)(script, ["-qfec", `exec ${shell} -l`, "/dev/null"], {
+    cwd: (0, import_node_fs.existsSync)(opts.cwd) ? opts.cwd : home,
+    env,
+    detached: true,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  let terminal = null;
+  let size = null;
+  let ended = false;
+  let killTimer = null;
+  const applySize = () => {
+    if (terminal && size) {
+      (0, import_node_child_process.execFile)(findStty(), ["-F", terminal.tty, "cols", String(size.cols), "rows", String(size.rows)], (err) => {
+        if (err) {
+          opts.log.debug(`Console: stty: ${err.message}`);
+        }
+      });
+    }
+  };
+  let tries = 0;
+  const lookup = setInterval(() => {
+    if (ended || terminal || ++tries > 60 || !child.pid) {
+      clearInterval(lookup);
+      return;
+    }
+    terminal = findTerminal(child.pid);
+    if (terminal) {
+      clearInterval(lookup);
+      applySize();
+    }
+  }, 50);
+  const stop = () => {
+    child.stdout?.resume();
+    child.stderr?.resume();
+    if (killTimer || ended) {
+      return;
+    }
+    signalGroup(terminal?.pid, "SIGHUP");
+    signalGroup(child.pid, "SIGHUP");
+    killTimer = setTimeout(() => {
+      signalGroup(terminal?.pid, "SIGKILL");
+      signalGroup(child.pid, "SIGKILL");
+    }, 3e3);
+  };
+  const forward = (chunk) => {
+    if (stream.destroyed || !stream.writable) {
+      return;
+    }
+    if (!stream.write(consoleMessage(CONSOLE.DATA, chunk))) {
+      child.stdout?.pause();
+      child.stderr?.pause();
+      stream.once("drain", () => {
+        child.stdout?.resume();
+        child.stderr?.resume();
+      });
+    }
+  };
+  child.stdout?.on("data", forward);
+  child.stderr?.on("data", forward);
+  child.stdin?.on("error", () => {
+  });
+  const reader = new ConsoleReader((type, payload) => {
+    if (type === CONSOLE.DATA) {
+      child.stdin?.write(payload);
+    } else if (type === CONSOLE.RESIZE && payload.length >= 4) {
+      const clamp = (n) => Math.max(1, Math.min(1e3, n));
+      size = { cols: clamp(payload.readUInt16BE(0)), rows: clamp(payload.readUInt16BE(2)) };
+      applySize();
+    }
+  });
+  stream.on("data", (chunk) => {
+    if (!reader.push(chunk)) {
+      stream.destroy(new Error("invalid console message"));
+    }
+  });
+  stream.on("end", stop);
+  stream.on("close", stop);
+  stream.on("error", stop);
+  child.on("error", (err) => {
+    opts.log.warn(`Console: ${err.message}`);
+    stop();
+  });
+  child.on("close", (code, signal) => {
+    ended = true;
+    clearInterval(lookup);
+    if (killTimer) {
+      clearTimeout(killTimer);
+    }
+    const result = signal ? signal : String(code ?? "");
+    if (!stream.destroyed && stream.writable) {
+      stream.end(consoleMessage(CONSOLE.EXIT, Buffer.from(result)));
+    }
+    opts.log.info(`Console of ${opts.by} ended (${result})`);
+    opts.onEnd?.(result);
+  });
+  opts.log.info(`Console: shell ${shell} as ${consoleUser()} started for ${opts.by}`);
+}
 
 // bee-ha/src/homeassistant.ts
 var import_promises = require("node:fs/promises");
@@ -24680,203 +25090,6 @@ var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
-// src/tunnel.ts
-var import_node_stream = require("node:stream");
-var FRAME = { OPEN: 1, DATA: 2, END: 3, RESET: 4, ACK: 5 };
-var WINDOW = 256 * 1024;
-var MAX_PAYLOAD = 32 * 1024;
-var ACK_THRESHOLD = 64 * 1024;
-var REFUSE_HEADER = "x-bee-refused";
-var CLOSE = {
-  /** The session ended (operator, expiry, server stop): do not reconnect */
-  ENDED: 4e3,
-  /** The agent refuses: the owner does not allow this kind of access */
-  NOT_ALLOWED: 4003,
-  /** The agent finds no local web interface of this kind */
-  NO_TARGET: 4004,
-  /** Another connection of the same session took over */
-  REPLACED: 4009
-};
-var MAX_CONSOLE_MESSAGE = 1024 * 1024;
-function frame(type, id, payload) {
-  const buf = Buffer.allocUnsafe(5 + (payload?.length ?? 0));
-  buf[0] = type;
-  buf.writeUInt32BE(id, 1);
-  payload?.copy(buf, 5);
-  return buf;
-}
-var TunnelStream = class extends import_node_stream.Duplex {
-  constructor(mux, id) {
-    super({ allowHalfOpen: true });
-    this.mux = mux;
-    this.id = id;
-  }
-  mux;
-  id;
-  /** Bytes this side may still send */
-  credit = WINDOW;
-  /** Write waiting for credit */
-  pending = null;
-  /** Received bytes passed on but not yet acknowledged */
-  unacked = 0;
-  /** The reader did not take everything: acknowledge once it asks for more */
-  paused = false;
-  sentEnd = false;
-  gotEnd = false;
-  gotReset = false;
-  _write(chunk, _encoding, callback) {
-    this.send(chunk, callback);
-  }
-  send(chunk, callback) {
-    while (chunk.length) {
-      const n = Math.min(chunk.length, this.credit, MAX_PAYLOAD);
-      if (n <= 0) {
-        this.pending = { chunk, callback };
-        return;
-      }
-      this.mux.sendFrame(FRAME.DATA, this.id, chunk.subarray(0, n));
-      this.mux.bytesOut += n;
-      this.credit -= n;
-      chunk = chunk.subarray(n);
-    }
-    callback();
-  }
-  _final(callback) {
-    this.sentEnd = true;
-    this.mux.sendFrame(FRAME.END, this.id);
-    callback();
-  }
-  _read() {
-    if (this.paused) {
-      this.paused = false;
-      this.ack(true);
-    }
-  }
-  _destroy(err, callback) {
-    if (!this.gotReset && !(this.sentEnd && this.gotEnd)) {
-      this.mux.sendFrame(FRAME.RESET, this.id, Buffer.from(err?.message || "closed"));
-    }
-    this.mux.forget(this.id);
-    const pending = this.pending;
-    this.pending = null;
-    pending?.callback(err || new Error("stream closed"));
-    callback(err);
-  }
-  ack(force) {
-    if (this.paused || !this.unacked || this.destroyed || !force && this.unacked < ACK_THRESHOLD) {
-      return;
-    }
-    const payload = Buffer.allocUnsafe(4);
-    payload.writeUInt32BE(this.unacked, 0);
-    this.unacked = 0;
-    this.mux.sendFrame(FRAME.ACK, this.id, payload);
-  }
-  /** Frame from the other side, passed on by the Mux */
-  handle(type, payload) {
-    if (type === FRAME.DATA) {
-      if (this.gotEnd) {
-        return;
-      }
-      this.mux.bytesIn += payload.length;
-      this.unacked += payload.length;
-      if (this.push(payload)) {
-        this.ack(false);
-      } else {
-        this.paused = true;
-      }
-    } else if (type === FRAME.END) {
-      this.gotEnd = true;
-      this.push(null);
-    } else if (type === FRAME.ACK && payload.length >= 4) {
-      this.credit += payload.readUInt32BE(0);
-      const pending = this.pending;
-      if (pending) {
-        this.pending = null;
-        this.send(pending.chunk, pending.callback);
-      }
-    } else if (type === FRAME.RESET) {
-      this.gotReset = true;
-      this.destroy(new Error(payload.toString("utf8") || "reset by the other side"));
-    }
-  }
-};
-var Mux = class {
-  constructor(send2, onStream) {
-    this.send = send2;
-    this.onStream = onStream;
-  }
-  send;
-  onStream;
-  streams = /* @__PURE__ */ new Map();
-  nextId = 1;
-  closed = false;
-  /** Payload bytes received and sent, for the audit log */
-  bytesIn = 0;
-  bytesOut = 0;
-  get size() {
-    return this.streams.size;
-  }
-  get isClosed() {
-    return this.closed;
-  }
-  open() {
-    if (this.closed) {
-      throw new Error("tunnel closed");
-    }
-    const id = this.nextId;
-    this.nextId = this.nextId >= 4294967295 ? 1 : this.nextId + 1;
-    const stream = new TunnelStream(this, id);
-    this.streams.set(id, stream);
-    this.sendFrame(FRAME.OPEN, id);
-    return stream;
-  }
-  receive(buf) {
-    if (this.closed || buf.length < 5) {
-      return;
-    }
-    const type = buf[0];
-    const id = buf.readUInt32BE(1);
-    const payload = buf.subarray(5);
-    if (type === FRAME.OPEN) {
-      if (!this.onStream || this.streams.has(id)) {
-        this.sendFrame(FRAME.RESET, id, Buffer.from("refused"));
-        return;
-      }
-      const stream2 = new TunnelStream(this, id);
-      this.streams.set(id, stream2);
-      this.onStream(stream2);
-      return;
-    }
-    const stream = this.streams.get(id);
-    if (stream) {
-      stream.handle(type, payload);
-    } else if (type === FRAME.DATA) {
-      this.sendFrame(FRAME.RESET, id, Buffer.from("unknown stream"));
-    }
-  }
-  /** @internal */
-  sendFrame(type, id, payload) {
-    if (!this.closed) {
-      this.send(frame(type, id, payload));
-    }
-  }
-  /** @internal */
-  forget(id) {
-    this.streams.delete(id);
-  }
-  /** The WebSocket is gone: every stream ends with an error */
-  close(reason = "tunnel closed") {
-    if (this.closed) {
-      return;
-    }
-    this.closed = true;
-    for (const stream of [...this.streams.values()]) {
-      stream.destroy(new Error(reason));
-    }
-    this.streams.clear();
-  }
-};
-
 // bee-ha/src/tunnel-client.ts
 function haTarget(haUrl) {
   const u = new URL(haUrl);
@@ -25041,6 +25254,10 @@ var TunnelClient = class {
     });
   }
   onStream(stream) {
+    if (this.opts.handler) {
+      this.opts.handler(stream);
+      return;
+    }
     const t = this.opts.target;
     if (!t) {
       stream.destroy(new Error("no target"));
@@ -25055,7 +25272,7 @@ var TunnelClient = class {
 };
 
 // bee-ha/src/agent.ts
-var AGENT_VERSION = "0.3.0";
+var AGENT_VERSION = "0.4.0";
 var OWNER_ENDED = "Vom Besitzer in Home Assistant beendet";
 var HA_INSTANCE = "homeassistant";
 async function enroll(url, req) {
@@ -25089,9 +25306,10 @@ function buildInventory(input) {
     homeassistant: input.ha,
     agentVersion: AGENT_VERSION,
     uuid: input.uuid,
-    hostname: import_node_os.default.hostname(),
+    hostname: import_node_os2.default.hostname(),
     ...comment ? { comment } : {},
-    remoteAccess: input.config.remoteAccess ? ["ha"] : [],
+    remoteAccess: [...input.config.remoteAccess ? ["ha"] : [], ...input.console ? ["console"] : []],
+    ...input.console ? { consoleUser: consoleUser() } : {},
     // offered also while Home Assistant does not answer: the portal shows that, the browser gets an error page
     accessTargets: { ha: [{ instance: HA_INSTANCE, port: t.port, secure: t.secure, auth: true }] },
     // the AI session, carried to the integration Beekeeper; no command of ioBroker
@@ -25100,12 +25318,12 @@ function buildInventory(input) {
     // node empty on purpose: the Node.js of the agent is no matter of the installation (no warning about its end)
     software: { jsController: "", node: "", npm: "", adapters: {}, instances: {} },
     system: {
-      platform: import_node_os.default.platform(),
-      arch: import_node_os.default.arch(),
+      platform: import_node_os2.default.platform(),
+      arch: import_node_os2.default.arch(),
       os: `Home Assistant ${input.ha.installation}`,
-      kernel: import_node_os.default.release(),
-      model: (0, import_node_fs.existsSync)("/.dockerenv") ? "Docker" : import_node_os.default.cpus()[0]?.model?.trim() || "",
-      memTotal: import_node_os.default.totalmem(),
+      kernel: import_node_os2.default.release(),
+      model: (0, import_node_fs2.existsSync)("/.dockerenv") ? "Docker" : import_node_os2.default.cpus()[0]?.model?.trim() || "",
+      memTotal: import_node_os2.default.totalmem(),
       diskTotal: input.diskTotal
     },
     backup: { lastLocal: null, offDevice: false }
@@ -25148,6 +25366,8 @@ var Agent = class {
   seq = 0;
   lastInventory = "";
   tunnels = /* @__PURE__ */ new Map();
+  /** Running shells per console session */
+  shells = /* @__PURE__ */ new Map();
   timers = [];
   enrollTimer = null;
   stopped = false;
@@ -25175,7 +25395,7 @@ var Agent = class {
     this.uuid = await this.loadUuid();
     this.creds = await this.loadCreds();
     this.log.info(
-      `bee-ha ${AGENT_VERSION}: Home Assistant at ${this.config.haUrl}, remote access ${this.config.remoteAccess ? "allowed" : "off"}`
+      `bee-ha ${AGENT_VERSION}: Home Assistant at ${this.config.haUrl}, remote access ${this.config.remoteAccess ? "allowed" : "off"}, console ${!this.config.console ? "off" : findScript() ? "allowed" : "allowed, but no script (util-linux) here"}`
     );
     if (this.config.localPort) {
       await this.startLocalApi();
@@ -25212,7 +25432,7 @@ var Agent = class {
       return;
     }
     if (this.config.supervisorToken) {
-      const ok = await announceToSupervisor(this.config.supervisorUrl, this.config.supervisorToken, import_node_os.default.hostname(), this.config.localPort);
+      const ok = await announceToSupervisor(this.config.supervisorUrl, this.config.supervisorToken, import_node_os2.default.hostname(), this.config.localPort);
       this.log[ok ? "debug" : "warn"](ok ? "Announced to Home Assistant (discovery)" : "Discovery at the Supervisor failed");
     }
   }
@@ -25230,6 +25450,7 @@ var Agent = class {
       problem: this.problem,
       sessions: [...this.tunnels.values()].map((t) => ({
         id: t.req.id,
+        kind: t.req.kind,
         by: t.req.by,
         purpose: t.req.purpose,
         startedAt: t.startedAt,
@@ -25294,7 +25515,7 @@ var Agent = class {
     const result = await enroll(this.config.url, {
       token: this.config.token,
       uuid: this.uuid,
-      hostname: import_node_os.default.hostname(),
+      hostname: import_node_os2.default.hostname(),
       agentVersion: AGENT_VERSION,
       ...normalizeComment(this.config.comment) ? { comment: normalizeComment(this.config.comment) } : {}
     });
@@ -25340,9 +25561,9 @@ var Agent = class {
       ts: Date.now(),
       online: true,
       agentVersion: AGENT_VERSION,
-      uptime: Math.round(import_node_os.default.uptime()),
-      load: Math.round(import_node_os.default.loadavg()[0] * 100) / 100,
-      memFree: import_node_os.default.freemem(),
+      uptime: Math.round(import_node_os2.default.uptime()),
+      load: Math.round(import_node_os2.default.loadavg()[0] * 100) / 100,
+      memFree: import_node_os2.default.freemem(),
       ...d ? { diskFree: d.free } : {}
     };
     await this.transport?.publish("state", st);
@@ -25358,7 +25579,8 @@ var Agent = class {
           config: this.config,
           ha,
           diskTotal: d?.total ?? 0,
-          ai: this.relay.access()
+          ai: this.relay.access(),
+          console: this.consoleReady()
         });
         const text = JSON.stringify(inv);
         if (!force && text === this.lastInventory) {
@@ -25415,16 +25637,19 @@ var Agent = class {
       this.log.warn(`Remote access ${req.id}: tunnel address ${req.url} is not the own server, ignored`);
       return;
     }
-    const refusal = req.kind !== "ha" ? `bee-ha bietet nur Home Assistant an, nicht ${req.kind}` : !this.config.remoteAccess ? "Fernzugriff auf Home Assistant ist am Ger\xE4t abgeschaltet" : null;
+    const isConsole = req.kind === "console";
+    const refusal = req.kind !== "ha" && !isConsole ? `bee-ha bietet nur Home Assistant und die Konsole an, nicht ${req.kind}` : isConsole ? !this.config.console ? "Die Konsole ist am Ger\xE4t nicht freigegeben (Option console von bee-ha)" : !findScript() ? "Die Konsole braucht script (util-linux) im Container von bee-ha" : null : !this.config.remoteAccess ? "Fernzugriff auf Home Assistant ist am Ger\xE4t abgeschaltet" : null;
     this.tunnels.get(req.id)?.stop("replaced");
     const client = new TunnelClient(req, {
-      target: refusal ? null : haTarget(this.config.haUrl),
+      target: refusal || isConsole ? null : haTarget(this.config.haUrl),
+      ...isConsole && !refusal ? { handler: (stream) => this.openShell(req, stream) } : {},
       refusal,
       ca: trustedCas(creds.ca),
       log: this.log,
       onEnd: (c, reason) => {
         if (this.tunnels.get(c.req.id) === c) {
           this.tunnels.delete(c.req.id);
+          this.shells.delete(c.req.id);
         }
         if (!refusal) {
           this.log.info(`Remote access ${c.req.id} ended (${reason}), ${Math.round(c.bytes / 1024)} KB`);
@@ -25436,10 +25661,52 @@ var Agent = class {
     } else {
       this.tunnels.set(req.id, client);
       this.log.info(
-        `Remote access ${req.id} to Home Assistant for ${req.by} until ${new Date(req.expiresAt).toISOString()}: ${req.purpose}`
+        `Remote access ${req.id} to ${isConsole ? "the console" : "Home Assistant"} for ${req.by} until ${new Date(req.expiresAt).toISOString()}: ${req.purpose}`
       );
     }
     client.start();
+  }
+  /** The console is allowed and can run here */
+  consoleReady() {
+    return this.config.console && !!findScript();
+  }
+  /** Where a shell starts: the configuration of Home Assistant, if it is mounted */
+  consoleDir() {
+    const dirs = ["/homeassistant", this.config.haConfig, "/config"].filter((d) => !!d);
+    return dirs.find((d) => (0, import_node_fs2.existsSync)(d)) ?? import_node_os2.default.homedir();
+  }
+  /** One shell for a stream of a console session, at most MAX_SHELLS at the same time */
+  openShell(req, stream) {
+    const running = this.shells.get(req.id) ?? 0;
+    if (running >= MAX_SHELLS) {
+      stream.end(
+        Buffer.concat([
+          consoleMessage(CONSOLE.DATA, Buffer.from(`H\xF6chstens ${MAX_SHELLS} Shells je Sitzung.\r
+`)),
+          consoleMessage(CONSOLE.EXIT, Buffer.from("zu viele Shells"))
+        ])
+      );
+      return;
+    }
+    this.shells.set(req.id, running + 1);
+    const env = { HA_URL: this.config.haUrl };
+    if (this.config.supervisorToken) {
+      env.SUPERVISOR_TOKEN = this.config.supervisorToken;
+    }
+    startShell(stream, {
+      cwd: this.consoleDir(),
+      log: this.log,
+      by: req.by,
+      env,
+      onEnd: () => {
+        const n = (this.shells.get(req.id) ?? 1) - 1;
+        if (n > 0) {
+          this.shells.set(req.id, n);
+        } else {
+          this.shells.delete(req.id);
+        }
+      }
+    });
   }
 };
 
@@ -25457,6 +25724,9 @@ function addonEnv(options2) {
   text("HA_URL", options2.ha_url);
   if (typeof options2.remote_access === "boolean") {
     env.BEE_REMOTE_ACCESS = String(options2.remote_access);
+  }
+  if (typeof options2.console === "boolean") {
+    env.BEE_CONSOLE = String(options2.console);
   }
   if (typeof options2.debug === "boolean") {
     env.BEE_DEBUG = String(options2.debug);
@@ -25492,6 +25762,7 @@ function loadConfig(env = process.env) {
     installation: (env.HA_INSTALLATION || (env.SUPERVISOR_TOKEN ? "supervised" : "container")).trim(),
     comment: (env.BEE_COMMENT || "").trim(),
     remoteAccess: flag(env.BEE_REMOTE_ACCESS, true),
+    console: flag(env.BEE_CONSOLE, false),
     heartbeat: seconds(env.BEE_HEARTBEAT, 3600, 60),
     check: seconds(env.BEE_CHECK, 300, 30),
     localPort: port(env.BEE_LOCAL_PORT, 8099),
@@ -25519,7 +25790,7 @@ function addonOptions() {
     return null;
   }
   try {
-    return JSON.parse((0, import_node_fs2.readFileSync)(process.env.BEE_OPTIONS || "/data/options.json", "utf8"));
+    return JSON.parse((0, import_node_fs3.readFileSync)(process.env.BEE_OPTIONS || "/data/options.json", "utf8"));
   } catch {
     return null;
   }

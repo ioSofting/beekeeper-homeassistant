@@ -11,6 +11,9 @@ configuration:
   remote_access:
     name: Allow remote access
     description: "Off: the portal cannot open a remote access to this Home Assistant."
+  console:
+    name: Allow the console
+    description: "A shell in this add-on through the portal, for people with the permission console, with purpose and time in the audit log: the configuration of Home Assistant and the CLI ha (updates, add-ons, backups). Off by default."
   ha_url:
     name: Address of Home Assistant
     description: "Change only if Home Assistant does not answer on http://homeassistant:8123 (e.g. https with an own certificate)."
