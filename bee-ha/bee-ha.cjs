@@ -24184,13 +24184,15 @@ function frame(type, id, payload) {
   return buf;
 }
 var TunnelStream = class extends import_node_stream.Duplex {
-  constructor(mux, id) {
+  constructor(mux, id, meta = Buffer.alloc(0)) {
     super({ allowHalfOpen: true });
     this.mux = mux;
     this.id = id;
+    this.meta = meta;
   }
   mux;
   id;
+  meta;
   /** Bytes this side may still send */
   credit = WINDOW;
   /** Write waiting for credit */
@@ -24297,15 +24299,15 @@ var Mux = class {
   get isClosed() {
     return this.closed;
   }
-  open() {
+  open(meta) {
     if (this.closed) {
       throw new Error("tunnel closed");
     }
     const id = this.nextId;
     this.nextId = this.nextId >= 4294967295 ? 1 : this.nextId + 1;
-    const stream = new TunnelStream(this, id);
+    const stream = new TunnelStream(this, id, meta);
     this.streams.set(id, stream);
-    this.sendFrame(FRAME.OPEN, id);
+    this.sendFrame(FRAME.OPEN, id, meta);
     return stream;
   }
   receive(buf) {
@@ -24320,7 +24322,7 @@ var Mux = class {
         this.sendFrame(FRAME.RESET, id, Buffer.from("refused"));
         return;
       }
-      const stream2 = new TunnelStream(this, id);
+      const stream2 = new TunnelStream(this, id, Buffer.from(payload));
       this.streams.set(id, stream2);
       this.onStream(stream2);
       return;
@@ -24605,6 +24607,50 @@ async function announceToSupervisor(url, token, host, port2) {
   } catch {
     return false;
   }
+}
+var LOCAL_AGENTS = ["backup.local", "hassio.local"];
+var WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+function longestGap(days) {
+  const list = Array.isArray(days) ? days : [];
+  const idx = [...new Set(list.map((d) => WEEKDAYS.indexOf(String(d))).filter((i) => i >= 0))].sort((a, b) => a - b);
+  let max = idx.length ? 0 : 7;
+  for (let i = 0; i < idx.length; i++) {
+    max = Math.max(max, (i + 1 < idx.length ? idx[i + 1] : idx[0] + 7) - idx[i]);
+  }
+  return max;
+}
+var timeOf = (v) => {
+  const t = typeof v === "string" ? Date.parse(v) : NaN;
+  return Number.isFinite(t) ? t : null;
+};
+function parseHaBackup(text) {
+  let c;
+  try {
+    c = JSON.parse(text)?.data?.config;
+  } catch {
+    return null;
+  }
+  if (!c || typeof c !== "object") {
+    return null;
+  }
+  const recurrence = c.schedule?.recurrence;
+  const agents = Array.isArray(c.create_backup?.agent_ids) ? c.create_backup.agent_ids.filter((a) => typeof a === "string") : [];
+  return {
+    // older files have no automatic_backups_configured: then the schedule counts alone
+    scheduled: c.automatic_backups_configured !== false && (recurrence === "daily" || recurrence === "custom_days"),
+    everyDays: recurrence === "custom_days" ? longestGap(c.schedule?.days) : 1,
+    targets: agents.filter((a) => !LOCAL_AGENTS.includes(a)),
+    lastAttempt: timeOf(c.last_attempted_automatic_backup),
+    lastOk: timeOf(c.last_completed_automatic_backup),
+    lastSize: typeof c.last_completed_automatic_backup_size === "number" ? c.last_completed_automatic_backup_size : null
+  };
+}
+async function haBackup(configDir) {
+  if (!configDir || await readText((0, import_node_path.join)(configDir, ".HA_VERSION")) === null) {
+    return void 0;
+  }
+  const text = await readText((0, import_node_path.join)(configDir, ".storage", "backup"));
+  return text === null ? null : parseHaBackup(text);
 }
 async function probeHomeAssistant(opts) {
   const [version, locationName, reachable, sup] = await Promise.all([
@@ -25272,7 +25318,7 @@ var TunnelClient = class {
 };
 
 // bee-ha/src/agent.ts
-var AGENT_VERSION = "0.4.0";
+var AGENT_VERSION = "0.5.0";
 var OWNER_ENDED = "Vom Besitzer in Home Assistant beendet";
 var HA_INSTANCE = "homeassistant";
 async function enroll(url, req) {
@@ -25326,7 +25372,11 @@ function buildInventory(input) {
       memTotal: import_node_os2.default.totalmem(),
       diskTotal: input.diskTotal
     },
-    backup: { lastLocal: null, offDevice: false }
+    backup: {
+      lastLocal: null,
+      offDevice: !!input.backup?.targets.length,
+      ...input.backup !== void 0 ? { homeassistant: input.backup } : {}
+    }
   };
 }
 async function disk(dir) {
@@ -25580,7 +25630,8 @@ var Agent = class {
           ha,
           diskTotal: d?.total ?? 0,
           ai: this.relay.access(),
-          console: this.consoleReady()
+          console: this.consoleReady(),
+          backup: await haBackup(this.config.haConfig)
         });
         const text = JSON.stringify(inv);
         if (!force && text === this.lastInventory) {

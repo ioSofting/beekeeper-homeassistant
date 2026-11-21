@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- Sicherung: Das Add-on meldet die automatische Sicherung von Home Assistant (Einstellungen › System › Sicherungen) aus `.storage/backup`: eingerichtet oder nicht, Abstand, Speicherorte außerhalb des Geräts, letzter Versuch und letzte erfolgreiche mit Größe. Das Portal zeigt daraus Abweichungen (keine Sicherung, nur auf dem Gerät, fehlgeschlagen, überfällig)
+- Protokoll: dieselben Dateien wie im Server
+
 ## 0.4.0
 
 - Konsole: eine Shell in diesem Add-on über das Portal (Knopf *Konsole*, Recht `console`, mit Zweck und Dauer im Audit-Log), ab Werk aus (Option *Konsole erlauben*). Darin die Konfiguration von Home Assistant (`/homeassistant`), `share`, `ssl`, `media`, `addon_configs`, `backup` (nur lesen) und die CLI `ha` (amd64 und aarch64)
